@@ -3,24 +3,26 @@ import { supabase } from '../lib/supabase';
 import { normalize, parseCurrencyToNumber, parseMonthYear } from '../lib/importParsers';
 
 export interface ParsedRow {
-  raw: Record<string, string>;
   ano: number | null;
   mes: number | null;
   costCenterRaw: string;
+  costCenterCodigo: string | null; // extraído de "930600 - AQUISIÇÃO DE CONTEÚDO"
+  costCenterNome: string | null;
   managerialAccountName: string;
   supplierName: string;
   valor: number;
   tratamento: 'Utilizar' | 'Não utilizar';
-  // resolução
-  costCenterId: string | null;
+  // resolução (preenchida na pré-visualização)
+  costCenterId: string | null; // null enquanto pendente de criação
+  costCenterIsNew: boolean;
   managerialAccountId: string | null;
+  managerialAccountIsNew: boolean;
   supplierId: string | null;
   supplierIsNew: boolean;
   status: 'ok' | 'erro';
   errorMessage?: string;
 }
 
-// Aliases de cabeçalho (tolerantes a variação de nome de coluna)
 const HEADER_ALIASES: Record<string, string[]> = {
   data: ['data', 'fimmes', 'mes', 'mes/ano', 'mes_competencia'],
   centroCusto: ['centro de custo', 'centro de custo ajustado', 'centro resultado', 'centro_custo_ajustado'],
@@ -52,30 +54,37 @@ interface CostCenterLite {
   codigo: string;
   nome: string;
 }
+interface AccountLite {
+  id: string;
+  cost_center_id: string;
+  nome: string;
+}
+interface SupplierLite {
+  id: string;
+  nome_padronizado: string;
+  nomes_alternativos: string[];
+}
 
-/**
- * Resolve o texto de "Centro de Custo" da base geral (ex: "930600 - AQUISIÇÃO DE CONTEÚDO",
- * ou só "AQUISICAO DE CONTEUDO") para o cost_center_id já cadastrado no sistema.
- */
-function resolveCostCenterId(raw: string, costCenters: CostCenterLite[]): string | null {
-  if (!raw) return null;
+/** Extrai {codigo, nome} de "930600 - AQUISIÇÃO DE CONTEÚDO". Sem código, retorna nome=raw e codigo=null. */
+function splitCostCenterRaw(raw: string): { codigo: string | null; nome: string } {
   const match = raw.match(/^(\d+)\s*-\s*(.+)$/);
-  if (match) {
-    const codigo = match[1];
-    const nome = match[2];
+  if (match) return { codigo: match[1], nome: match[2].trim() };
+  return { codigo: null, nome: raw.trim() };
+}
+
+function resolveCostCenter(raw: string, costCenters: CostCenterLite[]): CostCenterLite | null {
+  const { codigo, nome } = splitCostCenterRaw(raw);
+  if (codigo) {
     const byCodigo = costCenters.find((cc) => cc.codigo === codigo);
-    if (byCodigo) return byCodigo.id;
-    const byNome = costCenters.find((cc) => normalize(cc.nome) === normalize(nome));
-    if (byNome) return byNome.id;
+    if (byCodigo) return byCodigo;
   }
-  const target = normalize(raw);
-  const exact = costCenters.find((cc) => normalize(cc.nome) === target || cc.codigo === raw.trim());
-  if (exact) return exact.id;
-  // fallback tolerante: contém
+  const target = normalize(nome);
+  const exact = costCenters.find((cc) => normalize(cc.nome) === target);
+  if (exact) return exact;
   const partial = costCenters.find(
     (cc) => target.includes(normalize(cc.nome)) || normalize(cc.nome).includes(target)
   );
-  return partial?.id ?? null;
+  return partial ?? null;
 }
 
 export function useImportRealizado() {
@@ -86,6 +95,9 @@ export function useImportRealizado() {
     inserted: number;
     skippedDuplicates: number;
     failed: number;
+    newCostCenters: number;
+    newAccounts: number;
+    newSuppliers: number;
     failMessages: string[];
   } | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
@@ -111,15 +123,14 @@ export function useImportRealizado() {
     const idxTipo = findColumnIndex(headers, 'tipo');
     const idxTratamento = findColumnIndex(headers, 'tratamento');
 
-    // Busca TODOS os centros de custo, contas gerenciais e fornecedores já cadastrados
     const [costCentersRes, accountsRes, suppliersRes] = await Promise.all([
       supabase.from('cost_centers').select('id, codigo, nome'),
       supabase.from('managerial_accounts').select('id, cost_center_id, nome'),
       supabase.from('suppliers').select('id, nome_padronizado, nomes_alternativos'),
     ]);
     const costCenters = (costCentersRes.data ?? []) as CostCenterLite[];
-    const accounts = accountsRes.data ?? [];
-    const suppliers = suppliersRes.data ?? [];
+    const accounts = (accountsRes.data ?? []) as AccountLite[];
+    const suppliers = (suppliersRes.data ?? []) as SupplierLite[];
 
     function resolveAccountId(costCenterId: string, nome: string): string | null {
       const target = normalize(nome);
@@ -132,7 +143,7 @@ export function useImportRealizado() {
       const found = suppliers.find(
         (s) =>
           normalize(s.nome_padronizado) === target ||
-          (s.nomes_alternativos ?? []).some((alt: string) => normalize(alt) === target)
+          (s.nomes_alternativos ?? []).some((alt) => normalize(alt) === target)
       );
       if (found) return { id: found.id, isNew: false };
       return { id: null, isNew: true };
@@ -144,9 +155,7 @@ export function useImportRealizado() {
       const cols = lines[i].split(delimiter).map((c) => c.trim());
 
       const tipoRaw = idxTipo !== -1 ? cols[idxTipo] : '';
-      if (tipoRaw && normalize(tipoRaw) !== 'realizado') {
-        continue; // ignora ORÇAMENTO/FORECAST se a coluna Tipo existir
-      }
+      if (tipoRaw && normalize(tipoRaw) !== 'realizado') continue;
 
       const dataRaw = idxData !== -1 ? cols[idxData] : '';
       const centroCustoRaw = idxCentroCusto !== -1 ? cols[idxCentroCusto] : '';
@@ -157,13 +166,20 @@ export function useImportRealizado() {
 
       const monthYear = parseMonthYear(dataRaw);
       const valorNum = Math.abs(parseCurrencyToNumber(valorRaw));
-      const costCenterId = centroCustoRaw ? resolveCostCenterId(centroCustoRaw, costCenters) : null;
-      const accountId = costCenterId && contaRaw ? resolveAccountId(costCenterId, contaRaw) : null;
+
+      const resolvedCC = centroCustoRaw ? resolveCostCenter(centroCustoRaw, costCenters) : null;
+      const { codigo: ccCodigo, nome: ccNome } = centroCustoRaw
+        ? splitCostCenterRaw(centroCustoRaw)
+        : { codigo: null, nome: '' };
+      const costCenterIsNew = !resolvedCC && !!centroCustoRaw;
+
+      const accountId =
+        resolvedCC && contaRaw ? resolveAccountId(resolvedCC.id, contaRaw) : null;
+      const managerialAccountIsNew = !!contaRaw && !accountId; // novo se CC existir ou não
+
       const supplierResolved = fornecedorRaw ? resolveSupplier(fornecedorRaw) : { id: null, isNew: false };
       const tratamento: 'Utilizar' | 'Não utilizar' =
-        normalize(tratamentoRaw) === 'nao utilizar' || normalize(tratamentoRaw) === 'não utilizar'
-          ? 'Não utilizar'
-          : 'Utilizar';
+        normalize(tratamentoRaw) === 'nao utilizar' ? 'Não utilizar' : 'Utilizar';
 
       let status: 'ok' | 'erro' = 'ok';
       let errorMessage: string | undefined;
@@ -171,12 +187,15 @@ export function useImportRealizado() {
       if (!monthYear) {
         status = 'erro';
         errorMessage = 'Data não reconhecida';
-      } else if (!costCenterId) {
+      } else if (!centroCustoRaw) {
         status = 'erro';
-        errorMessage = `Centro de custo "${centroCustoRaw}" ainda não cadastrado no sistema`;
-      } else if (!accountId) {
+        errorMessage = 'Centro de custo vazio';
+      } else if (costCenterIsNew && !ccCodigo) {
         status = 'erro';
-        errorMessage = `Conta gerencial "${contaRaw}" não encontrada neste centro de custo`;
+        errorMessage = `Centro de custo "${centroCustoRaw}" não encontrado e sem código numérico para criar automaticamente`;
+      } else if (!contaRaw) {
+        status = 'erro';
+        errorMessage = 'Conta gerencial vazia';
       } else if (!fornecedorRaw) {
         status = 'erro';
         errorMessage = 'Fornecedor vazio';
@@ -186,16 +205,19 @@ export function useImportRealizado() {
       }
 
       rows.push({
-        raw: Object.fromEntries(headers.map((h, idx) => [h, cols[idx] ?? ''])),
         ano: monthYear?.ano ?? null,
         mes: monthYear?.mes ?? null,
         costCenterRaw: centroCustoRaw,
+        costCenterCodigo: ccCodigo,
+        costCenterNome: ccNome || null,
         managerialAccountName: contaRaw,
         supplierName: fornecedorRaw,
         valor: valorNum,
         tratamento,
-        costCenterId,
+        costCenterId: resolvedCC?.id ?? null,
+        costCenterIsNew,
         managerialAccountId: accountId,
+        managerialAccountIsNew,
         supplierId: supplierResolved.id,
         supplierIsNew: supplierResolved.isNew,
         status,
@@ -213,11 +235,75 @@ export function useImportRealizado() {
     let inserted = 0;
     let skippedDuplicates = 0;
     let failed = 0;
+    let newCostCentersCount = 0;
+    let newAccountsCount = 0;
+    let newSuppliersCount = 0;
     const failMessages: string[] = [];
 
     try {
       const validRows = parsedRows.filter((r) => r.status === 'ok');
 
+      // 1) Criar Centros de Custo novos (dedup por código)
+      const newCcByCodigo = new Map<string, string>(); // codigo -> nome
+      validRows
+        .filter((r) => r.costCenterIsNew && r.costCenterCodigo)
+        .forEach((r) => newCcByCodigo.set(r.costCenterCodigo as string, r.costCenterNome ?? r.costCenterCodigo!));
+
+      const costCenterIdByCodigo = new Map<string, string>();
+      for (const [codigo, nome] of newCcByCodigo) {
+        const { data, error } = await supabase
+          .from('cost_centers')
+          .insert({ codigo, nome, ativo: true })
+          .select('id')
+          .single();
+        if (error) {
+          failMessages.push(`Centro de custo "${codigo} - ${nome}": ${error.message}`);
+        } else if (data) {
+          costCenterIdByCodigo.set(codigo, data.id);
+          newCostCentersCount++;
+        }
+      }
+
+      function resolveRowCostCenterId(row: ParsedRow): string | null {
+        if (row.costCenterId) return row.costCenterId;
+        if (row.costCenterCodigo) return costCenterIdByCodigo.get(row.costCenterCodigo) ?? null;
+        return null;
+      }
+
+      // 2) Criar Contas Gerenciais novas (dedup por cost_center_id + nome)
+      const newAccountKeys = new Map<string, { costCenterId: string; nome: string }>();
+      for (const row of validRows) {
+        if (!row.managerialAccountIsNew) continue;
+        const ccId = resolveRowCostCenterId(row);
+        if (!ccId) continue;
+        const key = `${ccId}::${normalize(row.managerialAccountName)}`;
+        if (!newAccountKeys.has(key)) {
+          newAccountKeys.set(key, { costCenterId: ccId, nome: row.managerialAccountName });
+        }
+      }
+
+      const accountIdByKey = new Map<string, string>();
+      for (const [key, { costCenterId, nome }] of newAccountKeys) {
+        const { data, error } = await supabase
+          .from('managerial_accounts')
+          .insert({ cost_center_id: costCenterId, nome, ordem_exibicao: 0 })
+          .select('id')
+          .single();
+        if (error) {
+          failMessages.push(`Conta gerencial "${nome}": ${error.message}`);
+        } else if (data) {
+          accountIdByKey.set(key, data.id);
+          newAccountsCount++;
+        }
+      }
+
+      function resolveRowAccountId(row: ParsedRow, ccId: string): string | null {
+        if (row.managerialAccountId) return row.managerialAccountId;
+        const key = `${ccId}::${normalize(row.managerialAccountName)}`;
+        return accountIdByKey.get(key) ?? null;
+      }
+
+      // 3) Criar Fornecedores novos (dedup por nome)
       const newSupplierNames = Array.from(
         new Set(validRows.filter((r) => r.supplierIsNew).map((r) => r.supplierName))
       );
@@ -232,13 +318,26 @@ export function useImportRealizado() {
           failMessages.push(`Fornecedor "${name}": ${error.message}`);
         } else if (data) {
           createdSupplierIds.set(normalize(name), data.id);
+          newSuppliersCount++;
         }
       }
 
+      // 4) Inserir os lançamentos de Realizado
       for (const row of validRows) {
+        const ccId = resolveRowCostCenterId(row);
+        if (!ccId) {
+          failed++;
+          failMessages.push(`${row.costCenterRaw}: centro de custo não pôde ser criado/resolvido`);
+          continue;
+        }
+        const accountId = resolveRowAccountId(row, ccId);
+        if (!accountId) {
+          failed++;
+          failMessages.push(`${row.managerialAccountName}: conta gerencial não pôde ser criada/resolvida`);
+          continue;
+        }
         const supplierId: string | null =
           row.supplierId ?? createdSupplierIds.get(normalize(row.supplierName)) ?? null;
-
         if (!supplierId) {
           failed++;
           failMessages.push(`${row.supplierName} (${row.mes}/${row.ano}): fornecedor não pôde ser resolvido`);
@@ -248,8 +347,8 @@ export function useImportRealizado() {
         const { data: existing, error: selectError } = await supabase
           .from('actual_entries')
           .select('id')
-          .eq('cost_center_id', row.costCenterId as string)
-          .eq('managerial_account_id', row.managerialAccountId as string)
+          .eq('cost_center_id', ccId)
+          .eq('managerial_account_id', accountId)
           .eq('supplier_id', supplierId)
           .eq('ano', row.ano as number)
           .eq('mes', row.mes as number)
@@ -260,15 +359,14 @@ export function useImportRealizado() {
           failMessages.push(`${row.supplierName} (${row.mes}/${row.ano}): ${selectError.message}`);
           continue;
         }
-
         if (existing && existing.length > 0) {
           skippedDuplicates++;
           continue;
         }
 
         const { error: insertError } = await supabase.from('actual_entries').insert({
-          cost_center_id: row.costCenterId,
-          managerial_account_id: row.managerialAccountId,
+          cost_center_id: ccId,
+          managerial_account_id: accountId,
           supplier_id: supplierId,
           ano: row.ano,
           mes: row.mes,
@@ -285,7 +383,15 @@ export function useImportRealizado() {
         }
       }
 
-      setImportResult({ inserted, skippedDuplicates, failed, failMessages: failMessages.slice(0, 20) });
+      setImportResult({
+        inserted,
+        skippedDuplicates,
+        failed,
+        newCostCenters: newCostCentersCount,
+        newAccounts: newAccountsCount,
+        newSuppliers: newSuppliersCount,
+        failMessages: failMessages.slice(0, 30),
+      });
     } catch (err) {
       setImportError(err instanceof Error ? err.message : 'Erro inesperado durante a importação.');
     } finally {
