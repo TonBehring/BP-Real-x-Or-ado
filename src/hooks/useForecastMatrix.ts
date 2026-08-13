@@ -137,6 +137,28 @@ export function useForecastMatrix(costCenterId: string | undefined, ano: number)
     );
   }
 
+  /**
+   * Cria um fornecedor que ainda não existe no sistema (ex: gestor projetando
+   * forecast para um fornecedor novo, sem Realizado ainda) e já o adiciona à
+   * conta gerencial informada.
+   */
+  async function createSupplierAndAddToAccount(accountId: string, nomeFornecedor: string) {
+    const nome = nomeFornecedor.trim();
+    if (!nome) return { error: 'Nome do fornecedor não pode ser vazio' };
+
+    const { data, error } = await supabase
+      .from('suppliers')
+      .insert({ nome_padronizado: nome, nomes_alternativos: [] })
+      .select('id, nome_padronizado')
+      .single();
+
+    if (error) return { error: error.message };
+
+    setAllSuppliers((prev) => [...prev, data as SupplierOption]);
+    addSupplierToAccount(accountId, data.id);
+    return { error: null, supplierId: data.id as string };
+  }
+
   async function updateForecastCell(accountId: string, supplierId: string | null, mes: number, valor: number) {
     if (!costCenterId) return { error: 'Centro de custo ausente' };
 
@@ -180,7 +202,16 @@ export function useForecastMatrix(costCenterId: string | undefined, ano: number)
     return { error: null };
   }
 
-  return { accounts, allSuppliers, loading, error, addSupplierToAccount, updateForecastCell, refresh: load };
+  return {
+    accounts,
+    allSuppliers,
+    loading,
+    error,
+    addSupplierToAccount,
+    createSupplierAndAddToAccount,
+    updateForecastCell,
+    refresh: load,
+  };
 }
 
 function emptyMonthsForYear(ano: number): Record<number, MonthCell> {
