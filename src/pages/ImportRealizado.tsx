@@ -7,7 +7,7 @@ import { formatCurrency } from '../lib/dateHelpers';
 export default function ImportRealizado() {
   const { profile } = useAuth();
   const [text, setText] = useState('');
-  const { parsedRows, parsing, importing, importResult, parsePastedText, confirmImport } =
+  const { parsedRows, parsing, importing, importResult, importError, parsePastedText, confirmImport } =
     useImportRealizado();
 
   if (profile && profile.papel !== 'fpna_admin') {
@@ -122,8 +122,14 @@ export default function ImportRealizado() {
           </section>
         )}
 
-        {importResult && (
+        {importError && (
           <section className="bg-white rounded shadow-sm p-4 text-sm">
+            <p className="text-bp-estouro font-medium">Erro durante a importação: {importError}</p>
+          </section>
+        )}
+
+        {importResult && (
+          <section className="bg-white rounded shadow-sm p-4 text-sm space-y-1">
             <p className="text-bp-economia font-medium">
               {importResult.inserted} linha(s) importada(s) com sucesso.
             </p>
@@ -132,6 +138,18 @@ export default function ImportRealizado() {
                 {importResult.skippedDuplicates} linha(s) ignoradas por já existirem (mesmo
                 fornecedor, mês e valor).
               </p>
+            )}
+            {importResult.failed > 0 && (
+              <div>
+                <p className="text-bp-estouro font-medium">
+                  {importResult.failed} linha(s) falharam ao importar:
+                </p>
+                <ul className="list-disc list-inside text-xs text-bp-estouro">
+                  {importResult.failMessages.map((msg, i) => (
+                    <li key={i}>{msg}</li>
+                  ))}
+                </ul>
+              </div>
             )}
           </section>
         )}
