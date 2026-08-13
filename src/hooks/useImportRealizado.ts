@@ -272,6 +272,19 @@ export function useImportRealizado() {
           .select('id')
           .single();
         if (error) {
+          // Colisão de código (ex.: mesma conta com pontuação diferente gerou o
+          // mesmo código-placeholder) — em vez de falhar, reaproveita o registro existente.
+          if (error.code === '23505') {
+            const { data: existing } = await supabase
+              .from('cost_centers')
+              .select('id')
+              .eq('codigo', codigo)
+              .single();
+            if (existing) {
+              costCenterIdByDedupKey.set(key, existing.id);
+              continue;
+            }
+          }
           failMessages.push(`Centro de custo "${codigo} - ${nome}": ${error.message}`);
         } else if (data) {
           costCenterIdByDedupKey.set(key, data.id);
@@ -305,6 +318,18 @@ export function useImportRealizado() {
           .select('id')
           .single();
         if (error) {
+          if (error.code === '23505') {
+            const { data: existing } = await supabase
+              .from('managerial_accounts')
+              .select('id')
+              .eq('cost_center_id', costCenterId)
+              .eq('nome', nome)
+              .single();
+            if (existing) {
+              accountIdByKey.set(key, existing.id);
+              continue;
+            }
+          }
           failMessages.push(`Conta gerencial "${nome}": ${error.message}`);
         } else if (data) {
           accountIdByKey.set(key, data.id);
@@ -330,6 +355,17 @@ export function useImportRealizado() {
           .select('id')
           .single();
         if (error) {
+          if (error.code === '23505') {
+            const { data: existing } = await supabase
+              .from('suppliers')
+              .select('id')
+              .eq('nome_padronizado', name)
+              .single();
+            if (existing) {
+              createdSupplierIds.set(normalize(name), existing.id);
+              continue;
+            }
+          }
           failMessages.push(`Fornecedor "${name}": ${error.message}`);
         } else if (data) {
           createdSupplierIds.set(normalize(name), data.id);
