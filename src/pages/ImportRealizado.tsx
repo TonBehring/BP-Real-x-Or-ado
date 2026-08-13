@@ -45,8 +45,10 @@ export default function ImportRealizado() {
             <code>Data</code>, <code>Centro de Custo</code> (ex: "930600 - AQUISIÇÃO DE CONTEÚDO"),{' '}
             <code>Conta Gerencial Padronizada</code>, <code>Nome Padronizado</code> (fornecedor),{' '}
             <code>Valor</code>, <code>Tipo</code> (opcional — se existir, só linhas "REALIZADO" são
-            importadas). Só entram linhas cujo Centro de Custo e Conta Gerencial já estejam
-            cadastrados no sistema — os demais aparecem como erro na pré-visualização.
+            importadas). Centros de custo, contas gerenciais e fornecedores que ainda não existirem
+            no sistema são <strong>criados automaticamente</strong> — desde que o Centro de Custo
+            venha com um código numérico (ex: "930600 - ..."). Sem código, a linha aparece como erro
+            para criação manual.
           </p>
           <textarea
             value={text}
@@ -105,8 +107,18 @@ export default function ImportRealizado() {
                     <td className="px-2 py-1.5">
                       {row.mes && row.ano ? `${row.mes}/${row.ano}` : '–'}
                     </td>
-                    <td className="px-2 py-1.5 whitespace-nowrap">{row.costCenterRaw}</td>
-                    <td className="px-2 py-1.5 whitespace-nowrap">{row.managerialAccountName}</td>
+                    <td className="px-2 py-1.5 whitespace-nowrap">
+                      {row.costCenterRaw}
+                      {row.costCenterIsNew && (
+                        <span className="ml-1 text-[10px] text-bp-forecast">(novo centro de custo)</span>
+                      )}
+                    </td>
+                    <td className="px-2 py-1.5 whitespace-nowrap">
+                      {row.managerialAccountName}
+                      {row.managerialAccountIsNew && (
+                        <span className="ml-1 text-[10px] text-bp-forecast">(nova conta)</span>
+                      )}
+                    </td>
                     <td className="px-2 py-1.5">
                       {row.supplierName}
                       {row.supplierIsNew && (
@@ -133,6 +145,12 @@ export default function ImportRealizado() {
             <p className="text-bp-economia font-medium">
               {importResult.inserted} linha(s) importada(s) com sucesso.
             </p>
+            {(importResult.newCostCenters > 0 || importResult.newAccounts > 0 || importResult.newSuppliers > 0) && (
+              <p className="text-bp-forecast">
+                Criados automaticamente: {importResult.newCostCenters} centro(s) de custo,{' '}
+                {importResult.newAccounts} conta(s) gerencial(is), {importResult.newSuppliers} fornecedor(es).
+              </p>
+            )}
             {importResult.skippedDuplicates > 0 && (
               <p className="text-gray-500">
                 {importResult.skippedDuplicates} linha(s) ignoradas por já existirem (mesmo
