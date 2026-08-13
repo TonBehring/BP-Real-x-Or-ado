@@ -1,15 +1,15 @@
 /**
- * Remove acentos, baixa para minúsculas e trata separadores (espaço, "_", "/", "-")
- * como equivalentes — evita falhas de correspondência por causa de pequenas
- * variações de formatação em nomes de coluna, contas, fornecedores etc.
+ * Remove acentos, baixa para minúsculas e ignora QUALQUER pontuação/separador
+ * (espaço, "_", "/", "-", ",", ".", "'" etc.) — evita falhas de correspondência
+ * por causa de pequenas variações de formatação em nomes de coluna, contas,
+ * fornecedores, centros de custo etc.
  */
 export function normalize(text: string): string {
   return text
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
-    .replace(/[_/\-]+/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
     .trim();
 }
 
