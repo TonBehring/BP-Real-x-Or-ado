@@ -23,7 +23,7 @@ function ColGroup() {
 export default function ForecastMatrix() {
   const { id } = useParams<{ id: string }>();
   const ano = currentYear();
-  const { accounts, allSuppliers, loading, error, addSupplierToAccount, updateForecastCell } =
+  const { accounts, allSuppliers, loading, error, addSupplierToAccount, createSupplierAndAddToAccount, updateForecastCell } =
     useForecastMatrix(id, ano);
   const [savingKey, setSavingKey] = useState<string | null>(null);
 
@@ -58,13 +58,17 @@ export default function ForecastMatrix() {
         <div style={{ minWidth: tableWidth }} className="space-y-8">
           {accounts.map((group) => (
             <section key={group.accountId} className="bg-white rounded shadow-sm">
-              <div className="bg-bp-subtitle px-4 py-2 font-medium text-bp-header text-sm flex items-center justify-between">
-                <span>{group.accountName}</span>
+              <div className="bg-bp-subtitle px-4 py-2 font-medium text-bp-header text-sm flex items-center justify-between gap-3">
+                <span className="truncate">{group.accountName}</span>
                 <AddSupplierControl
                   suppliers={allSuppliers.filter(
                     (s) => !group.rows.some((r) => r.supplierId === s.id)
                   )}
                   onAdd={(supplierId) => addSupplierToAccount(group.accountId, supplierId)}
+                  onCreateNew={async (nome) => {
+                    const result = await createSupplierAndAddToAccount(group.accountId, nome);
+                    if (result.error) alert(`Não foi possível criar o fornecedor: ${result.error}`);
+                  }}
                 />
               </div>
               <table className="text-xs [table-layout:fixed] w-full">
@@ -139,38 +143,82 @@ export default function ForecastMatrix() {
 function AddSupplierControl({
   suppliers,
   onAdd,
+  onCreateNew,
 }: {
   suppliers: { id: string; nome_padronizado: string }[];
   onAdd: (supplierId: string) => void;
+  onCreateNew: (nome: string) => void | Promise<void>;
 }) {
-  const [selected, setSelected] = useState('');
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+
+  const normalizedQuery = query.trim().toLowerCase();
+  const matches =
+    normalizedQuery.length === 0
+      ? []
+      : suppliers
+          .filter((s) => s.nome_padronizado.toLowerCase().includes(normalizedQuery))
+          .slice(0, 8);
+
+  const hasExactMatch = suppliers.some((s) => s.nome_padronizado.toLowerCase() === normalizedQuery);
+
+  function handlePick(s: { id: string; nome_padronizado: string }) {
+    onAdd(s.id);
+    setQuery('');
+    setOpen(false);
+  }
+
+  async function handleCreateNew() {
+    const nome = query.trim();
+    if (!nome) return;
+    setCreating(true);
+    await onCreateNew(nome);
+    setCreating(false);
+    setQuery('');
+    setOpen(false);
+  }
 
   return (
-    <div className="flex items-center gap-2">
-      <select
-        value={selected}
-        onChange={(e) => setSelected(e.target.value)}
-        className="text-xs border border-gray-300 rounded px-2 py-1 text-bp-header"
-      >
-        <option value="">Selecionar fornecedor…</option>
-        {suppliers.map((s) => (
-          <option key={s.id} value={s.id}>
-            {s.nome_padronizado}
-          </option>
-        ))}
-      </select>
-      <button
-        disabled={!selected}
-        onClick={() => {
-          if (selected) {
-            onAdd(selected);
-            setSelected('');
-          }
+    <div className="relative w-56 flex-shrink-0">
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setOpen(true);
         }}
-        className="text-xs bg-bp-black text-white rounded px-2 py-1 disabled:opacity-40"
-      >
-        + Adicionar fornecedor
-      </button>
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="+ Buscar ou criar fornecedor…"
+        className="w-full text-xs border border-gray-300 rounded px-2 py-1.5 text-bp-header focus:outline-none focus:ring-1 focus:ring-bp-forecast"
+      />
+      {open && normalizedQuery.length > 0 && (
+        <ul className="absolute z-10 mt-1 w-full max-h-64 overflow-y-auto bg-white border border-gray-200 rounded shadow-lg text-xs">
+          {matches.map((s) => (
+            <li
+              key={s.id}
+              onClick={() => handlePick(s)}
+              className="px-2 py-1.5 text-bp-header hover:bg-bp-realized cursor-pointer truncate"
+              title={s.nome_padronizado}
+            >
+              {s.nome_padronizado}
+            </li>
+          ))}
+          {matches.length === 0 && (
+            <li className="px-2 py-1.5 text-gray-400">Nenhum fornecedor encontrado</li>
+          )}
+          {!hasExactMatch && (
+            <li
+              onMouseDown={(e) => e.preventDefault()} // evita perder o foco antes do clique
+              onClick={handleCreateNew}
+              className="px-2 py-1.5 text-bp-forecast font-medium hover:bg-bp-realized cursor-pointer border-t border-gray-100"
+            >
+              {creating ? 'Criando…' : `+ Criar fornecedor novo: "${query.trim()}"`}
+            </li>
+          )}
+        </ul>
+      )}
     </div>
   );
 }
