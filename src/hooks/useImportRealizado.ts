@@ -82,7 +82,13 @@ export function useImportRealizado() {
   const [parsedRows, setParsedRows] = useState<ParsedRow[]>([]);
   const [parsing, setParsing] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<{ inserted: number; skippedDuplicates: number } | null>(null);
+  const [importResult, setImportResult] = useState<{
+    inserted: number;
+    skippedDuplicates: number;
+    failed: number;
+    failMessages: string[];
+  } | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
 
   async function parsePastedText(text: string) {
     setParsing(true);
@@ -203,60 +209,97 @@ export function useImportRealizado() {
 
   async function confirmImport() {
     setImporting(true);
+    setImportError(null);
     let inserted = 0;
     let skippedDuplicates = 0;
+    let failed = 0;
+    const failMessages: string[] = [];
 
-    const validRows = parsedRows.filter((r) => r.status === 'ok');
+    try {
+      const validRows = parsedRows.filter((r) => r.status === 'ok');
 
-    const newSupplierNames = Array.from(
-      new Set(validRows.filter((r) => r.supplierIsNew).map((r) => r.supplierName))
-    );
-    const createdSupplierIds = new Map<string, string>();
-    for (const name of newSupplierNames) {
-      const { data, error } = await supabase
-        .from('suppliers')
-        .insert({ nome_padronizado: name, nomes_alternativos: [] })
-        .select('id')
-        .single();
-      if (!error && data) createdSupplierIds.set(normalize(name), data.id);
-    }
-
-    for (const row of validRows) {
-      const supplierId = row.supplierId ?? createdSupplierIds.get(normalize(row.supplierName)) ?? null;
-
-      const { data: existing } = await supabase
-        .from('actual_entries')
-        .select('id')
-        .eq('cost_center_id', row.costCenterId as string)
-        .eq('managerial_account_id', row.managerialAccountId as string)
-        .eq('supplier_id', supplierId as string)
-        .eq('ano', row.ano as number)
-        .eq('mes', row.mes as number)
-        .eq('valor', row.valor)
-        .limit(1);
-
-      if (existing && existing.length > 0) {
-        skippedDuplicates++;
-        continue;
+      const newSupplierNames = Array.from(
+        new Set(validRows.filter((r) => r.supplierIsNew).map((r) => r.supplierName))
+      );
+      const createdSupplierIds = new Map<string, string>();
+      for (const name of newSupplierNames) {
+        const { data, error } = await supabase
+          .from('suppliers')
+          .insert({ nome_padronizado: name, nomes_alternativos: [] })
+          .select('id')
+          .single();
+        if (error) {
+          failMessages.push(`Fornecedor "${name}": ${error.message}`);
+        } else if (data) {
+          createdSupplierIds.set(normalize(name), data.id);
+        }
       }
 
-      const { error } = await supabase.from('actual_entries').insert({
-        cost_center_id: row.costCenterId,
-        managerial_account_id: row.managerialAccountId,
-        supplier_id: supplierId,
-        ano: row.ano,
-        mes: row.mes,
-        valor: row.valor,
-        origem: 'BASE',
-        tratamento: row.tratamento,
-      });
+      for (const row of validRows) {
+        const supplierId: string | null =
+          row.supplierId ?? createdSupplierIds.get(normalize(row.supplierName)) ?? null;
 
-      if (!error) inserted++;
+        if (!supplierId) {
+          failed++;
+          failMessages.push(`${row.supplierName} (${row.mes}/${row.ano}): fornecedor não pôde ser resolvido`);
+          continue;
+        }
+
+        const { data: existing, error: selectError } = await supabase
+          .from('actual_entries')
+          .select('id')
+          .eq('cost_center_id', row.costCenterId as string)
+          .eq('managerial_account_id', row.managerialAccountId as string)
+          .eq('supplier_id', supplierId)
+          .eq('ano', row.ano as number)
+          .eq('mes', row.mes as number)
+          .eq('valor', row.valor);
+
+        if (selectError) {
+          failed++;
+          failMessages.push(`${row.supplierName} (${row.mes}/${row.ano}): ${selectError.message}`);
+          continue;
+        }
+
+        if (existing && existing.length > 0) {
+          skippedDuplicates++;
+          continue;
+        }
+
+        const { error: insertError } = await supabase.from('actual_entries').insert({
+          cost_center_id: row.costCenterId,
+          managerial_account_id: row.managerialAccountId,
+          supplier_id: supplierId,
+          ano: row.ano,
+          mes: row.mes,
+          valor: row.valor,
+          origem: 'BASE',
+          tratamento: row.tratamento,
+        });
+
+        if (insertError) {
+          failed++;
+          failMessages.push(`${row.supplierName} (${row.mes}/${row.ano}): ${insertError.message}`);
+        } else {
+          inserted++;
+        }
+      }
+
+      setImportResult({ inserted, skippedDuplicates, failed, failMessages: failMessages.slice(0, 20) });
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Erro inesperado durante a importação.');
+    } finally {
+      setImporting(false);
     }
-
-    setImportResult({ inserted, skippedDuplicates });
-    setImporting(false);
   }
 
-  return { parsedRows, parsing, importing, importResult, parsePastedText, confirmImport };
+  return {
+    parsedRows,
+    parsing,
+    importing,
+    importResult,
+    importError,
+    parsePastedText,
+    confirmImport,
+  };
 }
