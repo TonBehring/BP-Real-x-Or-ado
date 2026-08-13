@@ -1,9 +1,15 @@
-/** Remove acentos e baixa para comparação tolerante de nomes/cabeçalhos. */
+/**
+ * Remove acentos, baixa para minúsculas e trata separadores (espaço, "_", "/", "-")
+ * como equivalentes — evita falhas de correspondência por causa de pequenas
+ * variações de formatação em nomes de coluna, contas, fornecedores etc.
+ */
 export function normalize(text: string): string {
   return text
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
+    .replace(/[_/\-]+/g, ' ')
+    .replace(/\s+/g, ' ')
     .trim();
 }
 
