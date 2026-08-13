@@ -5,6 +5,7 @@ import Login from './pages/Login';
 import CostCenterList from './pages/CostCenterList';
 import CostCenterDashboard from './pages/CostCenterDashboard';
 import ForecastMatrix from './pages/ForecastMatrix';
+import ImportRealizado from './pages/ImportRealizado';
 
 export default function App() {
   return (
@@ -33,6 +34,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <ForecastMatrix />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/importar-realizado"
+            element={
+              <ProtectedRoute>
+                <ImportRealizado />
               </ProtectedRoute>
             }
           />
