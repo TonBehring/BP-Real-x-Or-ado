@@ -4,6 +4,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
 import CostCenterList from './pages/CostCenterList';
 import CostCenterDashboard from './pages/CostCenterDashboard';
+import ForecastMatrix from './pages/ForecastMatrix';
 
 export default function App() {
   return (
@@ -24,6 +25,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <CostCenterDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/centros/:id/forecast"
+            element={
+              <ProtectedRoute>
+                <ForecastMatrix />
               </ProtectedRoute>
             }
           />

@@ -71,8 +71,15 @@ export default function CostCenterDashboard() {
           </ul>
         </section>
 
+        <Link
+          to={`/centros/${costCenter.id}/forecast`}
+          className="block bg-bp-black text-white rounded shadow-sm px-4 py-3 text-sm font-medium hover:opacity-90 w-fit"
+        >
+          Abrir Input de Forecast →
+        </Link>
+
         <section className="bg-white rounded shadow-sm p-4 text-sm text-gray-500">
-          Resumo do ano (Orçado vs Real+Forecast) e matriz de Forecast entram na próxima etapa.
+          Resumo do ano (Orçado vs Real+Forecast) entra na próxima etapa.
         </section>
       </main>
     </div>
