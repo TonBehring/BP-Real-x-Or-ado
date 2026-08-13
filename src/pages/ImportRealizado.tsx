@@ -46,9 +46,8 @@ export default function ImportRealizado() {
             <code>Conta Gerencial Padronizada</code>, <code>Nome Padronizado</code> (fornecedor),{' '}
             <code>Valor</code>, <code>Tipo</code> (opcional — se existir, só linhas "REALIZADO" são
             importadas). Centros de custo, contas gerenciais e fornecedores que ainda não existirem
-            no sistema são <strong>criados automaticamente</strong> — desde que o Centro de Custo
-            venha com um código numérico (ex: "930600 - ..."). Sem código, a linha aparece como erro
-            para criação manual.
+            no sistema são <strong>criados automaticamente</strong> (com ou sem código numérico no
+            Centro de Custo).
           </p>
           <textarea
             value={text}
