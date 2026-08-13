@@ -190,9 +190,6 @@ export function useImportRealizado() {
       } else if (!centroCustoRaw) {
         status = 'erro';
         errorMessage = 'Centro de custo vazio';
-      } else if (costCenterIsNew && !ccCodigo) {
-        status = 'erro';
-        errorMessage = `Centro de custo "${centroCustoRaw}" não encontrado e sem código numérico para criar automaticamente`;
       } else if (!contaRaw) {
         status = 'erro';
         errorMessage = 'Conta gerencial vazia';
@@ -243,14 +240,32 @@ export function useImportRealizado() {
     try {
       const validRows = parsedRows.filter((r) => r.status === 'ok');
 
-      // 1) Criar Centros de Custo novos (dedup por código)
-      const newCcByCodigo = new Map<string, string>(); // codigo -> nome
-      validRows
-        .filter((r) => r.costCenterIsNew && r.costCenterCodigo)
-        .forEach((r) => newCcByCodigo.set(r.costCenterCodigo as string, r.costCenterNome ?? r.costCenterCodigo!));
+      // 1) Criar Centros de Custo novos (dedup por código real, ou pelo nome quando não há código)
+      function ccDedupKey(codigo: string | null, nome: string) {
+        return codigo ?? `NOME:${normalize(nome)}`;
+      }
+      function slugifyAsCodigo(nome: string) {
+        return (
+          normalize(nome)
+            .toUpperCase()
+            .replace(/[^A-Z0-9]+/g, '_')
+            .replace(/^_+|_+$/g, '') || 'CC'
+        );
+      }
 
-      const costCenterIdByCodigo = new Map<string, string>();
-      for (const [codigo, nome] of newCcByCodigo) {
+      const newCcMap = new Map<string, { codigo: string; nome: string }>(); // dedupKey -> {codigo real ou gerado, nome}
+      validRows
+        .filter((r) => r.costCenterIsNew)
+        .forEach((r) => {
+          const key = ccDedupKey(r.costCenterCodigo, r.costCenterNome ?? r.costCenterRaw);
+          if (!newCcMap.has(key)) {
+            const codigo = r.costCenterCodigo ?? slugifyAsCodigo(r.costCenterNome ?? r.costCenterRaw);
+            newCcMap.set(key, { codigo, nome: r.costCenterNome ?? r.costCenterRaw });
+          }
+        });
+
+      const costCenterIdByDedupKey = new Map<string, string>();
+      for (const [key, { codigo, nome }] of newCcMap) {
         const { data, error } = await supabase
           .from('cost_centers')
           .insert({ codigo, nome, ativo: true })
@@ -259,15 +274,15 @@ export function useImportRealizado() {
         if (error) {
           failMessages.push(`Centro de custo "${codigo} - ${nome}": ${error.message}`);
         } else if (data) {
-          costCenterIdByCodigo.set(codigo, data.id);
+          costCenterIdByDedupKey.set(key, data.id);
           newCostCentersCount++;
         }
       }
 
       function resolveRowCostCenterId(row: ParsedRow): string | null {
         if (row.costCenterId) return row.costCenterId;
-        if (row.costCenterCodigo) return costCenterIdByCodigo.get(row.costCenterCodigo) ?? null;
-        return null;
+        const key = ccDedupKey(row.costCenterCodigo, row.costCenterNome ?? row.costCenterRaw);
+        return costCenterIdByDedupKey.get(key) ?? null;
       }
 
       // 2) Criar Contas Gerenciais novas (dedup por cost_center_id + nome)
