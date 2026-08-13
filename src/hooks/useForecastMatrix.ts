@@ -121,7 +121,7 @@ export function useForecastMatrix(costCenterId: string | undefined, ano: number)
     load();
   }, [load]);
 
-  function addSupplierToAccount(accountId: string, supplierId: string) {
+  function addSupplierToAccount(accountId: string, supplierId: string, supplierNameOverride?: string) {
     setAccounts((prev) =>
       prev.map((g) => {
         if (g.accountId !== accountId) return g;
@@ -129,7 +129,7 @@ export function useForecastMatrix(costCenterId: string | undefined, ano: number)
         const supplier = allSuppliers.find((s) => s.id === supplierId);
         const newRow: SupplierRow = {
           supplierId,
-          supplierName: supplier?.nome_padronizado ?? '(fornecedor)',
+          supplierName: supplierNameOverride ?? supplier?.nome_padronizado ?? '(fornecedor)',
           months: emptyMonthsForYear(ano),
         };
         return { ...g, rows: [...g.rows, newRow] };
@@ -155,7 +155,9 @@ export function useForecastMatrix(costCenterId: string | undefined, ano: number)
     if (error) return { error: error.message };
 
     setAllSuppliers((prev) => [...prev, data as SupplierOption]);
-    addSupplierToAccount(accountId, data.id);
+    // Passa o nome direto (não depende do estado allSuppliers, que ainda não
+    // refletiu a criação acima no momento desta chamada).
+    addSupplierToAccount(accountId, data.id, data.nome_padronizado);
     return { error: null, supplierId: data.id as string };
   }
 
