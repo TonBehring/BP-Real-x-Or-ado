@@ -39,12 +39,22 @@ export default function CostCenterList() {
             {profile ? `${profile.nome} · ${profile.papel === 'fpna_admin' ? 'FP&A' : 'Gestor'}` : ''}
           </p>
         </div>
-        <button
-          onClick={signOut}
-          className="text-sm border border-white/40 rounded px-3 py-1 hover:bg-white/10"
-        >
-          Sair
-        </button>
+        <div className="flex items-center gap-3">
+          {profile?.papel === 'fpna_admin' && (
+            <Link
+              to="/importar-realizado"
+              className="text-sm border border-white/40 rounded px-3 py-1 hover:bg-white/10"
+            >
+              Importar Realizado
+            </Link>
+          )}
+          <button
+            onClick={signOut}
+            className="text-sm border border-white/40 rounded px-3 py-1 hover:bg-white/10"
+          >
+            Sair
+          </button>
+        </div>
       </header>
 
       <main className="max-w-3xl mx-auto px-6 py-8">
