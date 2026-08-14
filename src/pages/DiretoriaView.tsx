@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useDiretoriaList, useDiretoriaSummary } from '../hooks/useDiretoriaSummary';
 import { currentYear, formatCurrency } from '../lib/dateHelpers';
+import { costCenterLabel } from '../lib/costCenterLabel';
 
 export default function DiretoriaView() {
   const ano = currentYear();
@@ -91,7 +92,7 @@ export default function DiretoriaView() {
                   {summary.rows.map((r) => (
                     <tr key={r.costCenterId}>
                       <td className="px-3 py-2 text-bp-header font-medium whitespace-nowrap">
-                        {r.codigo} — {r.nome}
+                        {costCenterLabel(r.codigo, r.nome)}
                       </td>
                       <td className="px-2 py-2 text-right">{formatCurrency(r.orcadoAno)}</td>
                       <td className="px-2 py-2 text-right text-gray-500">{formatCurrency(r.realYtd)}</td>
