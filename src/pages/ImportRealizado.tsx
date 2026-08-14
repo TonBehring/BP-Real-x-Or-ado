@@ -3,12 +3,22 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../lib/AuthContext';
 import { useImportRealizado } from '../hooks/useImportRealizado';
 import { formatCurrency } from '../lib/dateHelpers';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 export default function ImportRealizado() {
   const { profile } = useAuth();
   const [text, setText] = useState('');
-  const { parsedRows, parsing, importing, importResult, importError, parsePastedText, confirmImport } =
-    useImportRealizado();
+  const [showConfirm, setShowConfirm] = useState(false);
+  const {
+    parsedRows,
+    parsing,
+    importing,
+    importResult,
+    importError,
+    pendingScopes,
+    parsePastedText,
+    confirmImport,
+  } = useImportRealizado();
 
   if (profile && profile.papel !== 'fpna_admin') {
     return (
@@ -24,6 +34,11 @@ export default function ImportRealizado() {
   const errorRows = parsedRows.filter((r) => r.status === 'erro');
   const costCentersInPreview = new Set(okRows.map((r) => r.costCenterRaw)).size;
 
+  async function handleConfirmed() {
+    setShowConfirm(false);
+    await confirmImport();
+  }
+
   return (
     <div className="min-h-screen bg-bp-realized">
       <header className="bg-bp-black text-white px-6 py-4">
@@ -32,22 +47,26 @@ export default function ImportRealizado() {
         </Link>
         <h1 className="text-lg font-semibold mt-1">Importar Realizado (base geral → sistema)</h1>
         <p className="text-xs text-gray-400">
-          Cole abaixo as linhas de REALIZADO da base geral (CONSOLIDADO_REALIZADO), de TODOS os
-          centros de custo de uma vez. O sistema distribui cada linha pro centro de custo certo
-          automaticamente, pela coluna "Centro de Custo".
+          Cole abaixo as linhas de REALIZADO da base geral (CONSOLIDADO_REALIZADO). Esta importação{' '}
+          <strong>sobrescreve</strong> o Realizado dos centros de custo e anos presentes na base
+          colada — cole sempre a base completa daquele período, não só as linhas novas.
         </p>
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
         <section className="bg-white rounded shadow-sm p-4 space-y-3">
           <p className="text-xs text-gray-500">
-            Colunas esperadas (nomes flexíveis, ordem não importa):{' '}
-            <code>Data</code>, <code>Centro de Custo</code> (ex: "930600 - AQUISIÇÃO DE CONTEÚDO"),{' '}
+            Colunas esperadas (nomes flexíveis, ordem não importa): <code>Data</code>,{' '}
+            <code>Centro de Custo</code> (ex: "930600 - AQUISIÇÃO DE CONTEÚDO"),{' '}
             <code>Conta Gerencial Padronizada</code>, <code>Nome Padronizado</code> (fornecedor),{' '}
-            <code>Valor</code>, <code>Tipo</code> (opcional — se existir, só linhas "REALIZADO" são
-            importadas). Centros de custo, contas gerenciais e fornecedores que ainda não existirem
-            no sistema são <strong>criados automaticamente</strong> (com ou sem código numérico no
-            Centro de Custo).
+            <code>Valor</code>, <code>Tipo</code> (opcional — se existir, só linhas "REALIZADO" ou
+            "PASSADO" são importadas). Centros de custo, contas gerenciais e fornecedores que ainda
+            não existirem no sistema são <strong>criados automaticamente</strong>.
+          </p>
+          <p className="text-xs text-bp-estouro font-medium">
+            ⚠️ Ao confirmar, o Realizado já existente dos centros de custo e anos presentes nesta
+            base é apagado e substituído pelo que você colou. Ajustes manuais (como lançamentos
+            neutralizados) não são afetados.
           </p>
           <textarea
             value={text}
@@ -73,11 +92,11 @@ export default function ImportRealizado() {
                 de custo) · {errorRows.length} com erro
               </span>
               <button
-                onClick={confirmImport}
+                onClick={() => setShowConfirm(true)}
                 disabled={okRows.length === 0 || importing}
                 className="bg-bp-black text-white rounded px-3 py-1.5 text-xs font-medium disabled:opacity-50"
               >
-                {importing ? 'Importando…' : `Confirmar importação (${okRows.length})`}
+                {importing ? 'Importando…' : `Sobrescrever e importar (${okRows.length})`}
               </button>
             </div>
 
@@ -144,16 +163,22 @@ export default function ImportRealizado() {
             <p className="text-bp-economia font-medium">
               {importResult.inserted} linha(s) importada(s) com sucesso.
             </p>
+            {importResult.escoposSubstituidos.length > 0 && (
+              <div>
+                <p className="text-gray-500">Escopos sobrescritos:</p>
+                <ul className="list-disc list-inside text-xs text-gray-500">
+                  {importResult.escoposSubstituidos.map((e, i) => (
+                    <li key={i}>
+                      {e.costCenterNome} — {e.ano}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {(importResult.newCostCenters > 0 || importResult.newAccounts > 0 || importResult.newSuppliers > 0) && (
               <p className="text-bp-forecast">
                 Criados automaticamente: {importResult.newCostCenters} centro(s) de custo,{' '}
                 {importResult.newAccounts} conta(s) gerencial(is), {importResult.newSuppliers} fornecedor(es).
-              </p>
-            )}
-            {importResult.skippedDuplicates > 0 && (
-              <p className="text-gray-500">
-                {importResult.skippedDuplicates} linha(s) ignoradas por já existirem (mesmo
-                fornecedor, mês e valor).
               </p>
             )}
             {importResult.failed > 0 && (
@@ -171,6 +196,19 @@ export default function ImportRealizado() {
           </section>
         )}
       </main>
+
+      <ConfirmDialog
+        open={showConfirm}
+        title="Sobrescrever Realizado"
+        message={
+          'Isso vai APAGAR o Realizado já importado (não afeta ajustes manuais) e recriar do zero para:\n\n' +
+          pendingScopes.map((s) => `• ${s.costCenterNome} — ${s.ano}`).join('\n') +
+          '\n\nConfirma?'
+        }
+        confirmLabel="Sim, sobrescrever"
+        onConfirm={handleConfirmed}
+        onCancel={() => setShowConfirm(false)}
+      />
     </div>
   );
 }
