@@ -11,6 +11,7 @@ import MergeCostCenters from './pages/MergeCostCenters';
 import DiretoriaView from './pages/DiretoriaView';
 import EditCostCenterGroups from './pages/EditCostCenterGroups';
 import ConsolidatedView from './pages/ConsolidatedView';
+import AnalyticalView from './pages/AnalyticalView';
 
 export default function App() {
   return (
@@ -39,6 +40,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <ForecastMatrix />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/centros/:id/analitico"
+            element={
+              <ProtectedRoute>
+                <AnalyticalView />
               </ProtectedRoute>
             }
           />
