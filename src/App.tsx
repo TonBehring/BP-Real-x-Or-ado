@@ -9,6 +9,7 @@ import ImportRealizado from './pages/ImportRealizado';
 import ManageManagers from './pages/ManageManagers';
 import MergeCostCenters from './pages/MergeCostCenters';
 import DiretoriaView from './pages/DiretoriaView';
+import EditCostCenterGroups from './pages/EditCostCenterGroups';
 
 export default function App() {
   return (
@@ -69,6 +70,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <DiretoriaView />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/editar-centros-de-custo"
+            element={
+              <ProtectedRoute>
+                <EditCostCenterGroups />
               </ProtectedRoute>
             }
           />
