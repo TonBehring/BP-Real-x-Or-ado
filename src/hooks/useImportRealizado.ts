@@ -124,9 +124,9 @@ export function useImportRealizado() {
     const idxTratamento = findColumnIndex(headers, 'tratamento');
 
     const [costCentersRes, accountsRes, suppliersRes] = await Promise.all([
-      supabase.from('cost_centers').select('id, codigo, nome'),
-      supabase.from('managerial_accounts').select('id, cost_center_id, nome'),
-      supabase.from('suppliers').select('id, nome_padronizado, nomes_alternativos'),
+      supabase.from('cost_centers').select('id, codigo, nome').range(0, 9999),
+      supabase.from('managerial_accounts').select('id, cost_center_id, nome').range(0, 9999),
+      supabase.from('suppliers').select('id, nome_padronizado, nomes_alternativos').range(0, 9999),
     ]);
     const costCenters = (costCentersRes.data ?? []) as CostCenterLite[];
     const accounts = (accountsRes.data ?? []) as AccountLite[];
