@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../lib/AuthContext';
 import { useManagerAssignments } from '../hooks/useManagerAssignments';
+import { costCenterLabel as formatCostCenterLabel } from '../lib/costCenterLabel';
 
 export default function ManageManagers() {
   const { profile: currentProfile } = useAuth();
