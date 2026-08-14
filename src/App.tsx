@@ -6,6 +6,7 @@ import CostCenterList from './pages/CostCenterList';
 import CostCenterDashboard from './pages/CostCenterDashboard';
 import ForecastMatrix from './pages/ForecastMatrix';
 import ImportRealizado from './pages/ImportRealizado';
+import ManageManagers from './pages/ManageManagers';
 
 export default function App() {
   return (
@@ -42,6 +43,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <ImportRealizado />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/gerenciar-gestores"
+            element={
+              <ProtectedRoute>
+                <ManageManagers />
               </ProtectedRoute>
             }
           />
