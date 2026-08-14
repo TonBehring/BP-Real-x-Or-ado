@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../lib/AuthContext';
 import { useConsolidatedSummary, ConsolidatedRow } from '../hooks/useConsolidatedSummary';
 import { currentYear, formatCurrency } from '../lib/dateHelpers';
+import { costCenterLabel } from '../lib/costCenterLabel';
 
 type SortKey = 'nome' | 'orcadoAno' | 'realMaisForecast' | 'desvioRs' | 'desvioPct';
 type SortDir = 'asc' | 'desc';
@@ -175,7 +176,7 @@ function Row({ row }: { row: ConsolidatedRow }) {
   return (
     <tr className={estouro && row.orcadoAno > 0 ? 'bg-red-50' : ''}>
       <td className="px-3 py-2 text-bp-header font-medium break-words">
-        {row.codigo} — {row.nome}
+        {costCenterLabel(row.codigo, row.nome)}
         {row.diretoriaPai && <span className="block text-[10px] text-gray-400">{row.diretoriaPai}</span>}
       </td>
       <td className="px-2 py-2 text-gray-600 break-words">{row.gestores}</td>
