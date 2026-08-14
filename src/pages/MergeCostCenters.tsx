@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../lib/AuthContext';
 import { useCostCenterMerge } from '../hooks/useCostCenterMerge';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 type Mode = 'existing' | 'new-group';
 
@@ -15,6 +16,7 @@ export default function MergeCostCenters() {
   const [merging, setMerging] = useState(false);
   const [resultMessages, setResultMessages] = useState<string[] | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   if (profile && profile.papel !== 'fpna_admin') {
     return (
@@ -28,31 +30,27 @@ export default function MergeCostCenters() {
     setMemberIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
-  async function handleMerge() {
+  function handleMergeClick() {
     setActionError(null);
     setResultMessages(null);
-
     if (mode === 'existing') {
       if (!canonicalId || memberIds.length === 0) return;
-      const confirmed = window.confirm(
-        `Isso vai fundir ${memberIds.length} centro(s) de custo dentro do centro de custo escolhido como principal. ` +
-          'Os absorvidos ficam inativos (não são apagados). Confirma?'
-      );
-      if (!confirmed) return;
+    } else {
+      if (!groupName.trim() || memberIds.length === 0) return;
+    }
+    setShowConfirm(true);
+  }
 
+  async function handleConfirmed() {
+    setShowConfirm(false);
+
+    if (mode === 'existing') {
       setMerging(true);
       const { messages } = await mergeCostCenters(canonicalId, memberIds.filter((id) => id !== canonicalId));
       setResultMessages(messages);
       setMemberIds([]);
       setMerging(false);
     } else {
-      if (!groupName.trim() || memberIds.length === 0) return;
-      const confirmed = window.confirm(
-        `Isso vai criar o grupo "${groupName}" e fundir ${memberIds.length} centro(s) de custo dentro dele. ` +
-          'Os originais ficam inativos (não são apagados). Confirma?'
-      );
-      if (!confirmed) return;
-
       setMerging(true);
       const { error, messages } = await createGroupAndMerge(groupName, memberIds);
       if (error) setActionError(error);
@@ -160,7 +158,7 @@ export default function MergeCostCenters() {
             </section>
 
             <button
-              onClick={handleMerge}
+              onClick={handleMergeClick}
               disabled={!canSubmit || merging}
               className="bg-bp-black text-white rounded px-4 py-2 text-sm font-medium disabled:opacity-50"
             >
@@ -185,6 +183,19 @@ export default function MergeCostCenters() {
           </>
         )}
       </main>
+
+      <ConfirmDialog
+        open={showConfirm}
+        title={mode === 'new-group' ? `Criar grupo "${groupName}"` : 'Fundir centros de custo'}
+        message={
+          mode === 'new-group'
+            ? `Isso vai criar o grupo "${groupName}" e fundir ${memberIds.length} centro(s) de custo dentro dele.\nOs originais ficam inativos (não são apagados).`
+            : `Isso vai fundir ${memberIds.length} centro(s) de custo dentro do centro de custo escolhido como principal.\nOs absorvidos ficam inativos (não são apagados).`
+        }
+        confirmLabel="Confirmar fusão"
+        onConfirm={handleConfirmed}
+        onCancel={() => setShowConfirm(false)}
+      />
     </div>
   );
 }
