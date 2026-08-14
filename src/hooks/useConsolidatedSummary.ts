@@ -2,12 +2,19 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { isPastOrCurrent } from '../lib/dateHelpers';
 
-export interface ConsolidatedRow {
-  costCenterId: string;
-  codigo: string;
-  nome: string;
-  diretoriaPai: string | null;
-  gestores: string;
+export interface MonthSummary {
+  mes: number;
+  orcado: number;
+  realizado: number;
+  forecast: number;
+  realOuForecast: number; // realizado se mês passado, forecast se futuro
+  desvioRs: number;
+  desvioPct: number | null; // null quando orçado = 0 (evita divisão por zero)
+}
+
+export interface AccountSummary {
+  accountId: string;
+  accountName: string;
   orcadoAno: number;
   realYtd: number;
   forecastRestante: number;
@@ -16,92 +23,121 @@ export interface ConsolidatedRow {
   desvioPct: number | null;
 }
 
-export interface ConsolidatedSummary {
-  rows: ConsolidatedRow[];
+export interface CostCenterSummary {
+  months: MonthSummary[];
+  accounts: AccountSummary[];
   orcadoAno: number;
   realMaisForecastAno: number;
   desvioRsAno: number;
   desvioPctAno: number | null;
 }
 
-export function useConsolidatedSummary(ano: number) {
-  const [summary, setSummary] = useState<ConsolidatedSummary | null>(null);
+export function useCostCenterSummary(costCenterId: string | undefined, ano: number) {
+  const [summary, setSummary] = useState<CostCenterSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    if (!costCenterId) return;
     setLoading(true);
     setError(null);
 
-    const { data: costCenters, error: ccError } = await supabase
-      .from('cost_centers')
-      .select('id, codigo, nome, diretoria_pai')
-      .eq('ativo', true)
-      .range(0, 9999);
-
-    if (ccError) {
-      setError(ccError.message);
-      setLoading(false);
-      return;
-    }
-
-    const ccIds = (costCenters ?? []).map((c) => c.id);
-    if (ccIds.length === 0) {
-      setSummary({ rows: [], orcadoAno: 0, realMaisForecastAno: 0, desvioRsAno: 0, desvioPctAno: null });
-      setLoading(false);
-      return;
-    }
-
-    const [budgetRes, actualRes, forecastRes, assignmentsRes] = await Promise.all([
-      supabase.from('budget_entries').select('cost_center_id, mes, valor').in('cost_center_id', ccIds).eq('ano', ano).range(0, 9999),
+    const [accountsRes, budgetRes, actualRes, forecastRes] = await Promise.all([
+      supabase
+        .from('managerial_accounts')
+        .select('id, nome, ordem_exibicao')
+        .eq('cost_center_id', costCenterId)
+        .order('ordem_exibicao'),
+      supabase
+        .from('budget_entries')
+        .select('managerial_account_id, mes, valor')
+        .eq('cost_center_id', costCenterId)
+        .eq('ano', ano),
       supabase
         .from('actual_entries')
-        .select('cost_center_id, mes, valor, tratamento')
-        .in('cost_center_id', ccIds)
-        .eq('ano', ano)
-        .range(0, 9999),
-      supabase.from('forecast_entries').select('cost_center_id, mes, valor').in('cost_center_id', ccIds).eq('ano', ano).range(0, 9999),
+        .select('managerial_account_id, mes, valor, tratamento')
+        .eq('cost_center_id', costCenterId)
+        .eq('ano', ano),
       supabase
-        .from('manager_cost_centers')
-        .select('cost_center_id, profiles(nome, email)')
-        .in('cost_center_id', ccIds)
-        .range(0, 9999),
+        .from('forecast_entries')
+        .select('managerial_account_id, mes, valor')
+        .eq('cost_center_id', costCenterId)
+        .eq('ano', ano),
     ]);
 
-    const totals: Record<string, { orcadoAno: number; realYtd: number; forecastRestante: number }> = {};
-    ccIds.forEach((id) => (totals[id] = { orcadoAno: 0, realYtd: 0, forecastRestante: 0 }));
+    if (accountsRes.error) {
+      setError(accountsRes.error.message);
+      setLoading(false);
+      return;
+    }
+
+    const accountsMeta = accountsRes.data ?? [];
+
+    // Totais por mês (todas as contas somadas)
+    const monthTotals: Record<number, { orcado: number; realizado: number; forecast: number }> = {};
+    for (let m = 1; m <= 12; m++) monthTotals[m] = { orcado: 0, realizado: 0, forecast: 0 };
+
+    // Totais por conta gerencial
+    const accountTotals: Record<
+      string,
+      { orcadoAno: number; realYtd: number; forecastRestante: number }
+    > = {};
+    accountsMeta.forEach((a) => {
+      accountTotals[a.id] = { orcadoAno: 0, realYtd: 0, forecastRestante: 0 };
+    });
 
     (budgetRes.data ?? []).forEach((b) => {
-      if (totals[b.cost_center_id]) totals[b.cost_center_id].orcadoAno += Number(b.valor);
-    });
-    (actualRes.data ?? []).forEach((a) => {
-      if (a.tratamento === 'Não utilizar') return;
-      if (totals[a.cost_center_id]) totals[a.cost_center_id].realYtd += Number(a.valor);
-    });
-    (forecastRes.data ?? []).forEach((f) => {
-      if (totals[f.cost_center_id] && !isPastOrCurrent(ano, f.mes)) {
-        totals[f.cost_center_id].forecastRestante += Number(f.valor);
+      monthTotals[b.mes].orcado += Number(b.valor);
+      if (accountTotals[b.managerial_account_id]) {
+        accountTotals[b.managerial_account_id].orcadoAno += Number(b.valor);
       }
     });
 
-    const gestoresByCc: Record<string, string[]> = {};
-    (assignmentsRes.data ?? []).forEach((a: any) => {
-      const nome = a.profiles?.nome ?? a.profiles?.email ?? '?';
-      if (!gestoresByCc[a.cost_center_id]) gestoresByCc[a.cost_center_id] = [];
-      gestoresByCc[a.cost_center_id].push(nome);
+    (actualRes.data ?? []).forEach((a) => {
+      if (a.tratamento === 'Não utilizar') return; // exclui lançamentos neutralizados
+      monthTotals[a.mes].realizado += Number(a.valor);
+      if (accountTotals[a.managerial_account_id]) {
+        accountTotals[a.managerial_account_id].realYtd += Number(a.valor);
+      }
     });
 
-    const rows: ConsolidatedRow[] = (costCenters ?? []).map((cc) => {
-      const t = totals[cc.id];
+    (forecastRes.data ?? []).forEach((f) => {
+      monthTotals[f.mes].forecast += Number(f.valor);
+      if (accountTotals[f.managerial_account_id] && !isPastOrCurrent(ano, f.mes)) {
+        accountTotals[f.managerial_account_id].forecastRestante += Number(f.valor);
+      }
+    });
+
+    const months: MonthSummary[] = [];
+    let orcadoAno = 0;
+    let realMaisForecastAno = 0;
+
+    for (let m = 1; m <= 12; m++) {
+      const t = monthTotals[m];
+      const realOuForecast = isPastOrCurrent(ano, m) ? t.realizado : t.forecast;
+      const desvioRs = t.orcado - realOuForecast;
+      const desvioPct = t.orcado !== 0 ? desvioRs / t.orcado : null;
+      months.push({
+        mes: m,
+        orcado: t.orcado,
+        realizado: t.realizado,
+        forecast: t.forecast,
+        realOuForecast,
+        desvioRs,
+        desvioPct,
+      });
+      orcadoAno += t.orcado;
+      realMaisForecastAno += realOuForecast;
+    }
+
+    const accounts: AccountSummary[] = accountsMeta.map((a) => {
+      const t = accountTotals[a.id];
       const realMaisForecast = t.realYtd + t.forecastRestante;
       const desvioRs = t.orcadoAno - realMaisForecast;
       const desvioPct = t.orcadoAno !== 0 ? desvioRs / t.orcadoAno : null;
       return {
-        costCenterId: cc.id,
-        codigo: cc.codigo,
-        nome: cc.nome,
-        diretoriaPai: cc.diretoria_pai,
-        gestores: (gestoresByCc[cc.id] ?? []).join(', ') || '—',
+        accountId: a.id,
+        accountName: a.nome,
         orcadoAno: t.orcadoAno,
         realYtd: t.realYtd,
         forecastRestante: t.forecastRestante,
@@ -111,14 +147,19 @@ export function useConsolidatedSummary(ano: number) {
       };
     });
 
-    const orcadoAno = rows.reduce((s, r) => s + r.orcadoAno, 0);
-    const realMaisForecastAno = rows.reduce((s, r) => s + r.realMaisForecast, 0);
     const desvioRsAno = orcadoAno - realMaisForecastAno;
     const desvioPctAno = orcadoAno !== 0 ? desvioRsAno / orcadoAno : null;
 
-    setSummary({ rows, orcadoAno, realMaisForecastAno, desvioRsAno, desvioPctAno });
+    setSummary({
+      months,
+      accounts,
+      orcadoAno,
+      realMaisForecastAno,
+      desvioRsAno,
+      desvioPctAno,
+    });
     setLoading(false);
-  }, [ano]);
+  }, [costCenterId, ano]);
 
   useEffect(() => {
     load();
