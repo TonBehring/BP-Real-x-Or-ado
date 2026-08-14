@@ -53,6 +53,7 @@ interface CostCenterLite {
   id: string;
   codigo: string;
   nome: string;
+  codigos_alternativos?: string[];
 }
 interface AccountLite {
   id: string;
@@ -75,7 +76,9 @@ function splitCostCenterRaw(raw: string): { codigo: string | null; nome: string 
 function resolveCostCenter(raw: string, costCenters: CostCenterLite[]): CostCenterLite | null {
   const { codigo, nome } = splitCostCenterRaw(raw);
   if (codigo) {
-    const byCodigo = costCenters.find((cc) => cc.codigo === codigo);
+    const byCodigo = costCenters.find(
+      (cc) => cc.codigo === codigo || (cc.codigos_alternativos ?? []).includes(codigo)
+    );
     if (byCodigo) return byCodigo;
   }
   const target = normalize(nome);
@@ -124,7 +127,7 @@ export function useImportRealizado() {
     const idxTratamento = findColumnIndex(headers, 'tratamento');
 
     const [costCentersRes, accountsRes, suppliersRes] = await Promise.all([
-      supabase.from('cost_centers').select('id, codigo, nome').range(0, 9999),
+      supabase.from('cost_centers').select('id, codigo, nome, codigos_alternativos').range(0, 9999),
       supabase.from('managerial_accounts').select('id, cost_center_id, nome').range(0, 9999),
       supabase.from('suppliers').select('id, nome_padronizado, nomes_alternativos').range(0, 9999),
     ]);
