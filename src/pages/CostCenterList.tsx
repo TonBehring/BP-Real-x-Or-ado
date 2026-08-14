@@ -55,6 +55,12 @@ export default function CostCenterList() {
                 Fundir CCs
               </Link>
               <Link
+                to="/editar-centros-de-custo"
+                className="text-sm border border-white/40 rounded px-3 py-1 hover:bg-white/10"
+              >
+                Editar/Desmembrar CCs
+              </Link>
+              <Link
                 to="/gerenciar-gestores"
                 className="text-sm border border-white/40 rounded px-3 py-1 hover:bg-white/10"
               >
