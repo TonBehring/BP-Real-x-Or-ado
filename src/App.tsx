@@ -7,6 +7,8 @@ import CostCenterDashboard from './pages/CostCenterDashboard';
 import ForecastMatrix from './pages/ForecastMatrix';
 import ImportRealizado from './pages/ImportRealizado';
 import ManageManagers from './pages/ManageManagers';
+import MergeCostCenters from './pages/MergeCostCenters';
+import DiretoriaView from './pages/DiretoriaView';
 
 export default function App() {
   return (
@@ -51,6 +53,22 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <ManageManagers />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/fundir-centros-de-custo"
+            element={
+              <ProtectedRoute>
+                <MergeCostCenters />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/visao-diretoria"
+            element={
+              <ProtectedRoute>
+                <DiretoriaView />
               </ProtectedRoute>
             }
           />
