@@ -75,15 +75,26 @@ function splitCostCenterRaw(raw: string): { codigo: string | null; nome: string 
 
 function resolveCostCenter(raw: string, costCenters: CostCenterLite[]): CostCenterLite | null {
   const { codigo, nome } = splitCostCenterRaw(raw);
+  const target = normalize(nome);
+
   if (codigo) {
     const byCodigo = costCenters.find(
       (cc) => cc.codigo === codigo || (cc.codigos_alternativos ?? []).includes(codigo)
     );
     if (byCodigo) return byCodigo;
   }
-  const target = normalize(nome);
+
   const exact = costCenters.find((cc) => normalize(cc.nome) === target);
   if (exact) return exact;
+
+  // Verifica se o nome bate com algum código/nome "antigo" guardado numa fusão anterior
+  const byAlt = costCenters.find((cc) =>
+    (cc.codigos_alternativos ?? []).some(
+      (alt) => normalize(alt) === target || alt === codigo || alt === raw.trim()
+    )
+  );
+  if (byAlt) return byAlt;
+
   const partial = costCenters.find(
     (cc) => target.includes(normalize(cc.nome)) || normalize(cc.nome).includes(target)
   );
@@ -127,7 +138,7 @@ export function useImportRealizado() {
     const idxTratamento = findColumnIndex(headers, 'tratamento');
 
     const [costCentersRes, accountsRes, suppliersRes] = await Promise.all([
-      supabase.from('cost_centers').select('id, codigo, nome, codigos_alternativos').range(0, 9999),
+      supabase.from('cost_centers').select('id, codigo, nome, codigos_alternativos').eq('ativo',true).range(0, 9999),
       supabase.from('managerial_accounts').select('id, cost_center_id, nome').range(0, 9999),
       supabase.from('suppliers').select('id, nome_padronizado, nomes_alternativos').range(0, 9999),
     ]);
