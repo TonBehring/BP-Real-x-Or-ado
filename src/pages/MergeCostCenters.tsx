@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../lib/AuthContext';
 import { useCostCenterMerge } from '../hooks/useCostCenterMerge';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { costCenterLabel } from '../lib/costCenterLabel';
 
 type Mode = 'existing' | 'new-group';
 
@@ -126,7 +127,7 @@ export default function MergeCostCenters() {
                     <option value="">Selecionar…</option>
                     {costCenters.map((cc) => (
                       <option key={cc.id} value={cc.id}>
-                        {cc.codigo} — {cc.nome}
+                        {costCenterLabel(cc.codigo, cc.nome)}
                       </option>
                     ))}
                   </select>
@@ -150,7 +151,7 @@ export default function MergeCostCenters() {
                         onChange={() => toggleMember(cc.id)}
                       />
                       <span>
-                        {cc.codigo} — {cc.nome}
+                        {costCenterLabel(cc.codigo, cc.nome)}
                       </span>
                     </label>
                   ))}
