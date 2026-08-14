@@ -158,7 +158,8 @@ export function useImportRealizado() {
       const cols = lines[i].split(delimiter).map((c) => c.trim());
 
       const tipoRaw = idxTipo !== -1 ? cols[idxTipo] : '';
-      if (tipoRaw && normalize(tipoRaw) !== 'realizado') continue;
+      const tipoNormalizado = tipoRaw ? normalize(tipoRaw) : '';
+      if (tipoNormalizado && tipoNormalizado !== 'realizado' && tipoNormalizado !== 'passado') continue;
 
       const dataRaw = idxData !== -1 ? cols[idxData] : '';
       const centroCustoRaw = idxCentroCusto !== -1 ? cols[idxCentroCusto] : '';
