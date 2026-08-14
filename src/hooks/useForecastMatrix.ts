@@ -59,7 +59,7 @@ export function useForecastMatrix(costCenterId: string | undefined, ano: number)
         .select('id, managerial_account_id, supplier_id, mes, valor')
         .eq('cost_center_id', costCenterId)
         .eq('ano', ano),
-      supabase.from('suppliers').select('id, nome_padronizado').order('nome_padronizado'),
+      supabase.from('suppliers').select('id, nome_padronizado').order('nome_padronizado').range(0, 9999),
     ]);
 
     if (accountsRes.error) {
