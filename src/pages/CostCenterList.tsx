@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/AuthContext';
 import { CostCenter } from '../types/domain';
+import { costCenterLabel } from '../lib/costCenterLabel';
 
 export default function CostCenterList() {
   const { profile, signOut } = useAuth();
@@ -109,7 +110,7 @@ export default function CostCenterList() {
                 to={`/centros/${cc.id}`}
                 className="block bg-white rounded shadow-sm px-4 py-3 hover:shadow-md transition-shadow"
               >
-                <span className="font-medium text-bp-header">{cc.codigo} — {cc.nome}</span>
+                <span className="font-medium text-bp-header">{costCenterLabel(cc.codigo, cc.nome)}</span>
                 {cc.diretoria_pai && (
                   <span className="block text-xs text-gray-500">{cc.diretoria_pai}</span>
                 )}
