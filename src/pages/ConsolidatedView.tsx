@@ -116,7 +116,15 @@ export default function ConsolidatedView() {
             />
 
             <section className="bg-white rounded shadow-sm overflow-x-auto">
-              <table className="w-full text-xs min-w-[900px]">
+              <table className="w-full text-xs table-fixed">
+                <colgroup>
+                  <col className="w-[26%]" />
+                  <col className="w-[22%]" />
+                  <col className="w-[13%]" />
+                  <col className="w-[15%]" />
+                  <col className="w-[15%]" />
+                  <col className="w-[9%]" />
+                </colgroup>
                 <thead>
                   <tr className="bg-bp-header text-white">
                     <th
@@ -166,11 +174,11 @@ function Row({ row }: { row: ConsolidatedRow }) {
   const estouro = row.desvioRs < 0;
   return (
     <tr className={estouro && row.orcadoAno > 0 ? 'bg-red-50' : ''}>
-      <td className="px-3 py-2 text-bp-header font-medium whitespace-nowrap">
+      <td className="px-3 py-2 text-bp-header font-medium break-words">
         {row.codigo} — {row.nome}
         {row.diretoriaPai && <span className="block text-[10px] text-gray-400">{row.diretoriaPai}</span>}
       </td>
-      <td className="px-2 py-2 text-gray-600 whitespace-nowrap">{row.gestores}</td>
+      <td className="px-2 py-2 text-gray-600 break-words">{row.gestores}</td>
       <td className="px-2 py-2 text-right">{formatCurrency(row.orcadoAno)}</td>
       <td className="px-2 py-2 text-right font-medium">{formatCurrency(row.realMaisForecast)}</td>
       <td className={`px-2 py-2 text-right ${estouro ? 'text-bp-estouro' : 'text-bp-economia'}`}>
