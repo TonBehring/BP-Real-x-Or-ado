@@ -39,7 +39,7 @@ export default function ManageManagers() {
   }
   function costCenterLabel(id: string) {
     const cc = costCenters.find((c) => c.id === id);
-    return cc ? `${cc.codigo} — ${cc.nome}` : '(centro de custo removido)';
+    return cc ? formatCostCenterLabel(cc.codigo, cc.nome) : '(centro de custo removido)';
   }
 
   return (
@@ -89,7 +89,7 @@ export default function ManageManagers() {
                     <option value="">Selecionar centro de custo…</option>
                     {costCenters.map((cc) => (
                       <option key={cc.id} value={cc.id}>
-                        {cc.codigo} — {cc.nome}
+                        {formatCostCenterLabel(cc.codigo, cc.nome)}
                       </option>
                     ))}
                   </select>
