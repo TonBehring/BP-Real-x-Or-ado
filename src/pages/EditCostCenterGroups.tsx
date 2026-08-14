@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../lib/AuthContext';
 import { useCostCenterSplit, OriginOption } from '../hooks/useCostCenterSplit';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { costCenterLabel } from '../lib/costCenterLabel';
 
 export default function EditCostCenterGroups() {
   const { profile } = useAuth();
@@ -96,7 +97,7 @@ export default function EditCostCenterGroups() {
                 <option value="">Selecionar…</option>
                 {groups.map((g) => (
                   <option key={g.id} value={g.id}>
-                    {g.codigo} — {g.nome}
+                    {costCenterLabel(g.codigo, g.nome)}
                   </option>
                 ))}
               </select>
@@ -137,7 +138,7 @@ export default function EditCostCenterGroups() {
                   {multiOrigin.map((o) => (
                     <div key={o.origemId} className="flex items-center justify-between border-t border-gray-100 pt-2">
                       <span className="text-sm text-bp-header">
-                        {o.codigo} — {o.nome}{' '}
+                        {costCenterLabel(o.codigo, o.nome)}{' '}
                         <span className="text-xs text-gray-400">({o.quantidadeContas} conta(s))</span>
                       </span>
                       <button
@@ -161,7 +162,7 @@ export default function EditCostCenterGroups() {
         title="Desmembrar centro de custo"
         message={
           splitTarget
-            ? `Isso vai reativar "${splitTarget.codigo} - ${splitTarget.nome}" como um centro de custo independente novamente, devolvendo suas ${splitTarget.quantidadeContas} conta(s) gerencial(is) e lançamentos. O grupo atual continua existindo com o restante.`
+            ? `Isso vai reativar "${costCenterLabel(splitTarget.codigo, splitTarget.nome)}" como um centro de custo independente novamente, devolvendo suas ${splitTarget.quantidadeContas} conta(s) gerencial(is) e lançamentos. O grupo atual continua existindo com o restante.`
             : ''
         }
         confirmLabel={splitting ? 'Desmembrando…' : 'Confirmar desmembramento'}
