@@ -12,7 +12,6 @@ export interface ParsedRow {
   supplierName: string;
   valor: number;
   tratamento: 'Utilizar' | 'Não utilizar';
-  idExterno: string | null; // "N Unico Financeiro" da base geral — identifica o lançamento de forma única
   // resolução (preenchida na pré-visualização)
   costCenterId: string | null; // null enquanto pendente de criação
   costCenterIsNew: boolean;
@@ -32,7 +31,6 @@ const HEADER_ALIASES: Record<string, string[]> = {
   valor: ['valor', 'valor ajustado', 'valor (r$)'],
   tipo: ['tipo'],
   tratamento: ['tratamento', 'usa p/l?'],
-  idExterno: ['n unico financeiro', 'id externo', 'numero unico', 'n_unico_financeiro'],
 };
 
 function findColumnIndex(headers: string[], aliasKey: string): number {
@@ -130,7 +128,6 @@ export function useImportRealizado() {
     const idxValor = findColumnIndex(headers, 'valor');
     const idxTipo = findColumnIndex(headers, 'tipo');
     const idxTratamento = findColumnIndex(headers, 'tratamento');
-    const idxIdExterno = findColumnIndex(headers, 'idExterno');
 
     const [costCentersRes, accountsRes, suppliersRes] = await Promise.all([
       supabase.from('cost_centers').select('id, codigo, nome, codigos_alternativos').range(0, 9999),
@@ -173,7 +170,6 @@ export function useImportRealizado() {
       const fornecedorRaw = idxFornecedor !== -1 ? cols[idxFornecedor] : '';
       const valorRaw = idxValor !== -1 ? cols[idxValor] : '';
       const tratamentoRaw = idxTratamento !== -1 ? cols[idxTratamento] : '';
-      const idExternoRaw = idxIdExterno !== -1 ? cols[idxIdExterno]?.trim() : '';
 
       const monthYear = parseMonthYear(dataRaw);
       const valorNum = Math.abs(parseCurrencyToNumber(valorRaw));
@@ -222,7 +218,6 @@ export function useImportRealizado() {
         supplierName: fornecedorRaw,
         valor: valorNum,
         tratamento,
-        idExterno: idExternoRaw || null,
         costCenterId: resolvedCC?.id ?? null,
         costCenterIsNew,
         managerialAccountId: accountId,
@@ -411,7 +406,6 @@ export function useImportRealizado() {
         valor: number;
         origem: 'BASE';
         tratamento: 'Utilizar' | 'Não utilizar';
-        id_externo: string | null;
       }[] = [];
       const scopesToWipe = new Map<string, { costCenterId: string; ano: number }>();
 
@@ -446,7 +440,6 @@ export function useImportRealizado() {
           valor: row.valor,
           origem: 'BASE',
           tratamento: row.tratamento,
-          id_externo: row.idExterno,
         });
       }
 
