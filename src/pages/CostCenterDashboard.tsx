@@ -45,12 +45,20 @@ export default function CostCenterDashboard() {
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
-        <Link
-          to={`/centros/${costCenter.id}/forecast`}
-          className="inline-block bg-bp-black text-white rounded shadow-sm px-4 py-3 text-sm font-medium hover:opacity-90"
-        >
-          Abrir Input de Forecast →
-        </Link>
+        <div className="flex gap-3">
+          <Link
+            to={`/centros/${costCenter.id}/forecast`}
+            className="inline-block bg-bp-black text-white rounded shadow-sm px-4 py-3 text-sm font-medium hover:opacity-90"
+          >
+            Abrir Input de Forecast →
+          </Link>
+          <Link
+            to={`/centros/${costCenter.id}/analitico`}
+            className="inline-block bg-white border border-bp-header text-bp-header rounded shadow-sm px-4 py-3 text-sm font-medium hover:bg-gray-50"
+          >
+            Real x Orçado Analítico →
+          </Link>
+        </div>
 
         {loadingSummary && <p className="text-sm text-gray-500">Calculando resumo…</p>}
         {error && <p className="text-sm text-bp-estouro">{error}</p>}
