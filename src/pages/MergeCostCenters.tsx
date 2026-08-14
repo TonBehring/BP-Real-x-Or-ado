@@ -3,13 +3,18 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../lib/AuthContext';
 import { useCostCenterMerge } from '../hooks/useCostCenterMerge';
 
+type Mode = 'existing' | 'new-group';
+
 export default function MergeCostCenters() {
   const { profile } = useAuth();
-  const { costCenters, loading, mergeCostCenters } = useCostCenterMerge();
+  const { costCenters, loading, mergeCostCenters, createGroupAndMerge } = useCostCenterMerge();
+  const [mode, setMode] = useState<Mode>('new-group');
   const [canonicalId, setCanonicalId] = useState('');
-  const [absorbedIds, setAbsorbedIds] = useState<string[]>([]);
+  const [groupName, setGroupName] = useState('');
+  const [memberIds, setMemberIds] = useState<string[]>([]);
   const [merging, setMerging] = useState(false);
   const [resultMessages, setResultMessages] = useState<string[] | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   if (profile && profile.papel !== 'fpna_admin') {
     return (
@@ -19,25 +24,47 @@ export default function MergeCostCenters() {
     );
   }
 
-  function toggleAbsorbed(id: string) {
-    setAbsorbedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  function toggleMember(id: string) {
+    setMemberIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
   async function handleMerge() {
-    if (!canonicalId || absorbedIds.length === 0) return;
-    const confirmed = window.confirm(
-      `Isso vai fundir ${absorbedIds.length} centro(s) de custo dentro do centro de custo escolhido como principal. ` +
-        'Os absorvidos ficam inativos (não são apagados). Confirma?'
-    );
-    if (!confirmed) return;
-
-    setMerging(true);
+    setActionError(null);
     setResultMessages(null);
-    const { messages } = await mergeCostCenters(canonicalId, absorbedIds.filter((id) => id !== canonicalId));
-    setResultMessages(messages);
-    setAbsorbedIds([]);
-    setMerging(false);
+
+    if (mode === 'existing') {
+      if (!canonicalId || memberIds.length === 0) return;
+      const confirmed = window.confirm(
+        `Isso vai fundir ${memberIds.length} centro(s) de custo dentro do centro de custo escolhido como principal. ` +
+          'Os absorvidos ficam inativos (não são apagados). Confirma?'
+      );
+      if (!confirmed) return;
+
+      setMerging(true);
+      const { messages } = await mergeCostCenters(canonicalId, memberIds.filter((id) => id !== canonicalId));
+      setResultMessages(messages);
+      setMemberIds([]);
+      setMerging(false);
+    } else {
+      if (!groupName.trim() || memberIds.length === 0) return;
+      const confirmed = window.confirm(
+        `Isso vai criar o grupo "${groupName}" e fundir ${memberIds.length} centro(s) de custo dentro dele. ` +
+          'Os originais ficam inativos (não são apagados). Confirma?'
+      );
+      if (!confirmed) return;
+
+      setMerging(true);
+      const { error, messages } = await createGroupAndMerge(groupName, memberIds);
+      if (error) setActionError(error);
+      setResultMessages(messages);
+      setGroupName('');
+      setMemberIds([]);
+      setMerging(false);
+    }
   }
+
+  const canSubmit =
+    mode === 'existing' ? !!canonicalId && memberIds.length > 0 : !!groupName.trim() && memberIds.length > 0;
 
   return (
     <div className="min-h-screen bg-bp-realized">
@@ -59,26 +86,60 @@ export default function MergeCostCenters() {
         {!loading && (
           <>
             <section className="bg-white rounded shadow-sm p-4 space-y-3">
-              <h2 className="text-sm font-semibold text-bp-header">
-                1. Escolha o centro de custo PRINCIPAL (o que vai sobreviver)
-              </h2>
-              <select
-                value={canonicalId}
-                onChange={(e) => setCanonicalId(e.target.value)}
-                className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm"
-              >
-                <option value="">Selecionar…</option>
-                {costCenters.map((cc) => (
-                  <option key={cc.id} value={cc.id}>
-                    {cc.codigo} — {cc.nome}
-                  </option>
-                ))}
-              </select>
+              <h2 className="text-sm font-semibold text-bp-header">1. Como você quer nomear o resultado?</h2>
+              <div className="flex gap-4 text-sm">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    checked={mode === 'new-group'}
+                    onChange={() => setMode('new-group')}
+                  />
+                  Criar um grupo novo, com nome próprio
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    checked={mode === 'existing'}
+                    onChange={() => setMode('existing')}
+                  />
+                  Fundir dentro de um centro de custo já existente
+                </label>
+              </div>
+
+              {mode === 'new-group' ? (
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Nome do grupo</label>
+                  <input
+                    type="text"
+                    value={groupName}
+                    onChange={(e) => setGroupName(e.target.value)}
+                    placeholder="Ex: Financeiro"
+                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm"
+                  />
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Centro de custo principal (sobrevive)</label>
+                  <select
+                    value={canonicalId}
+                    onChange={(e) => setCanonicalId(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm"
+                  >
+                    <option value="">Selecionar…</option>
+                    {costCenters.map((cc) => (
+                      <option key={cc.id} value={cc.id}>
+                        {cc.codigo} — {cc.nome}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </section>
 
             <section className="bg-white rounded shadow-sm p-4 space-y-3">
               <h2 className="text-sm font-semibold text-bp-header">
-                2. Marque os centros de custo que serão ABSORVIDOS
+                2. Marque os centros de custo que farão parte{' '}
+                {mode === 'new-group' ? 'do grupo' : '(serão absorvidos)'}
               </h2>
               <div className="max-h-72 overflow-y-auto divide-y divide-gray-100">
                 {costCenters
@@ -87,8 +148,8 @@ export default function MergeCostCenters() {
                     <label key={cc.id} className="flex items-center gap-2 px-1 py-2 text-sm cursor-pointer">
                       <input
                         type="checkbox"
-                        checked={absorbedIds.includes(cc.id)}
-                        onChange={() => toggleAbsorbed(cc.id)}
+                        checked={memberIds.includes(cc.id)}
+                        onChange={() => toggleMember(cc.id)}
                       />
                       <span>
                         {cc.codigo} — {cc.nome}
@@ -100,11 +161,17 @@ export default function MergeCostCenters() {
 
             <button
               onClick={handleMerge}
-              disabled={!canonicalId || absorbedIds.length === 0 || merging}
+              disabled={!canSubmit || merging}
               className="bg-bp-black text-white rounded px-4 py-2 text-sm font-medium disabled:opacity-50"
             >
-              {merging ? 'Fundindo…' : `Fundir ${absorbedIds.length} centro(s) de custo`}
+              {merging
+                ? 'Processando…'
+                : mode === 'new-group'
+                ? `Criar grupo "${groupName || '...'}" com ${memberIds.length} centro(s)`
+                : `Fundir ${memberIds.length} centro(s) de custo`}
             </button>
+
+            {actionError && <p className="text-sm text-bp-estouro">{actionError}</p>}
 
             {resultMessages && (
               <section className="bg-white rounded shadow-sm p-4 text-sm space-y-1">
