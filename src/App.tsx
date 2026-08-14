@@ -10,6 +10,7 @@ import ManageManagers from './pages/ManageManagers';
 import MergeCostCenters from './pages/MergeCostCenters';
 import DiretoriaView from './pages/DiretoriaView';
 import EditCostCenterGroups from './pages/EditCostCenterGroups';
+import ConsolidatedView from './pages/ConsolidatedView';
 
 export default function App() {
   return (
@@ -78,6 +79,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <EditCostCenterGroups />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/visao-consolidada"
+            element={
+              <ProtectedRoute>
+                <ConsolidatedView />
               </ProtectedRoute>
             }
           />
