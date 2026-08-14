@@ -21,14 +21,14 @@ export default function ConfirmDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-      <div className="w-full max-w-md bg-white rounded-md shadow-xl overflow-hidden">
-        <div className="bg-bp-black text-white px-5 py-3">
+      <div className="w-full max-w-md max-h-[85vh] bg-white rounded-md shadow-xl overflow-hidden flex flex-col">
+        <div className="bg-bp-black text-white px-5 py-3 flex-shrink-0">
           <h2 className="text-sm font-semibold">{title}</h2>
         </div>
-        <div className="px-5 py-4">
+        <div className="px-5 py-4 overflow-y-auto flex-1">
           <p className="text-sm text-gray-700 whitespace-pre-line">{message}</p>
         </div>
-        <div className="px-5 py-3 bg-bp-realized flex justify-end gap-2">
+        <div className="px-5 py-3 bg-bp-realized flex justify-end gap-2 flex-shrink-0">
           <button
             onClick={onCancel}
             className="text-sm px-3 py-1.5 rounded border border-gray-300 text-bp-header hover:bg-gray-100"
