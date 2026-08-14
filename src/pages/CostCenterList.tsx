@@ -43,6 +43,12 @@ export default function CostCenterList() {
           {profile?.papel === 'fpna_admin' && (
             <>
               <Link
+                to="/visao-consolidada"
+                className="text-sm border border-white/40 rounded px-3 py-1 hover:bg-white/10"
+              >
+                Visão Consolidada
+              </Link>
+              <Link
                 to="/visao-diretoria"
                 className="text-sm border border-white/40 rounded px-3 py-1 hover:bg-white/10"
               >
