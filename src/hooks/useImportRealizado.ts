@@ -12,6 +12,7 @@ export interface ParsedRow {
   supplierName: string;
   valor: number;
   tratamento: 'Utilizar' | 'Não utilizar';
+  idExterno: string | null; // "N Unico Financeiro" da base geral — identifica o lançamento de forma única
   // resolução (preenchida na pré-visualização)
   costCenterId: string | null; // null enquanto pendente de criação
   costCenterIsNew: boolean;
@@ -31,6 +32,7 @@ const HEADER_ALIASES: Record<string, string[]> = {
   valor: ['valor', 'valor ajustado', 'valor (r$)'],
   tipo: ['tipo'],
   tratamento: ['tratamento', 'usa p/l?'],
+  idExterno: ['n unico financeiro', 'id externo', 'numero unico', 'n_unico_financeiro'],
 };
 
 function findColumnIndex(headers: string[], aliasKey: string): number {
@@ -75,26 +77,15 @@ function splitCostCenterRaw(raw: string): { codigo: string | null; nome: string 
 
 function resolveCostCenter(raw: string, costCenters: CostCenterLite[]): CostCenterLite | null {
   const { codigo, nome } = splitCostCenterRaw(raw);
-  const target = normalize(nome);
-
   if (codigo) {
     const byCodigo = costCenters.find(
       (cc) => cc.codigo === codigo || (cc.codigos_alternativos ?? []).includes(codigo)
     );
     if (byCodigo) return byCodigo;
   }
-
+  const target = normalize(nome);
   const exact = costCenters.find((cc) => normalize(cc.nome) === target);
   if (exact) return exact;
-
-  // Verifica se o nome bate com algum código/nome "antigo" guardado numa fusão anterior
-  const byAlt = costCenters.find((cc) =>
-    (cc.codigos_alternativos ?? []).some(
-      (alt) => normalize(alt) === target || alt === codigo || alt === raw.trim()
-    )
-  );
-  if (byAlt) return byAlt;
-
   const partial = costCenters.find(
     (cc) => target.includes(normalize(cc.nome)) || normalize(cc.nome).includes(target)
   );
@@ -107,13 +98,16 @@ export function useImportRealizado() {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{
     inserted: number;
-    skippedDuplicates: number;
     failed: number;
     newCostCenters: number;
     newAccounts: number;
     newSuppliers: number;
+    escoposSubstituidos: { costCenterNome: string; ano: number }[];
     failMessages: string[];
   } | null>(null);
+  const [pendingScopes, setPendingScopes] = useState<{ costCenterId: string; costCenterNome: string; ano: number }[]>(
+    []
+  );
   const [importError, setImportError] = useState<string | null>(null);
 
   async function parsePastedText(text: string) {
@@ -136,9 +130,10 @@ export function useImportRealizado() {
     const idxValor = findColumnIndex(headers, 'valor');
     const idxTipo = findColumnIndex(headers, 'tipo');
     const idxTratamento = findColumnIndex(headers, 'tratamento');
+    const idxIdExterno = findColumnIndex(headers, 'idExterno');
 
     const [costCentersRes, accountsRes, suppliersRes] = await Promise.all([
-      supabase.from('cost_centers').select('id, codigo, nome, codigos_alternativos').eq('ativo',true).range(0, 9999),
+      supabase.from('cost_centers').select('id, codigo, nome, codigos_alternativos').range(0, 9999),
       supabase.from('managerial_accounts').select('id, cost_center_id, nome').range(0, 9999),
       supabase.from('suppliers').select('id, nome_padronizado, nomes_alternativos').range(0, 9999),
     ]);
@@ -178,6 +173,7 @@ export function useImportRealizado() {
       const fornecedorRaw = idxFornecedor !== -1 ? cols[idxFornecedor] : '';
       const valorRaw = idxValor !== -1 ? cols[idxValor] : '';
       const tratamentoRaw = idxTratamento !== -1 ? cols[idxTratamento] : '';
+      const idExternoRaw = idxIdExterno !== -1 ? cols[idxIdExterno]?.trim() : '';
 
       const monthYear = parseMonthYear(dataRaw);
       const valorNum = Math.abs(parseCurrencyToNumber(valorRaw));
@@ -226,6 +222,7 @@ export function useImportRealizado() {
         supplierName: fornecedorRaw,
         valor: valorNum,
         tratamento,
+        idExterno: idExternoRaw || null,
         costCenterId: resolvedCC?.id ?? null,
         costCenterIsNew,
         managerialAccountId: accountId,
@@ -238,6 +235,22 @@ export function useImportRealizado() {
     }
 
     setParsedRows(rows);
+
+    // Calcula os escopos (centro de custo + ano) que serão sobrescritos —
+    // usado pra avisar o usuário antes de confirmar.
+    const scopeMap = new Map<string, { costCenterId: string; costCenterNome: string; ano: number }>();
+    rows
+      .filter((r) => r.status === 'ok' && r.ano)
+      .forEach((r) => {
+        const ccId = r.costCenterId ?? `NOVO:${r.costCenterCodigo ?? r.costCenterRaw}`;
+        const ccNome = r.costCenterNome ?? r.costCenterRaw;
+        const key = `${ccId}::${r.ano}`;
+        if (!scopeMap.has(key)) {
+          scopeMap.set(key, { costCenterId: ccId, costCenterNome: ccNome, ano: r.ano as number });
+        }
+      });
+    setPendingScopes(Array.from(scopeMap.values()));
+
     setParsing(false);
   }
 
@@ -245,7 +258,6 @@ export function useImportRealizado() {
     setImporting(true);
     setImportError(null);
     let inserted = 0;
-    let skippedDuplicates = 0;
     let failed = 0;
     let newCostCentersCount = 0;
     let newAccountsCount = 0;
@@ -388,7 +400,21 @@ export function useImportRealizado() {
         }
       }
 
-      // 4) Inserir os lançamentos de Realizado
+      // 4) Monta os lançamentos válidos e descobre quais escopos
+      // (centro de custo + ano) serão sobrescritos
+      const rowsToInsert: {
+        cost_center_id: string;
+        managerial_account_id: string;
+        supplier_id: string;
+        ano: number;
+        mes: number;
+        valor: number;
+        origem: 'BASE';
+        tratamento: 'Utilizar' | 'Não utilizar';
+        id_externo: string | null;
+      }[] = [];
+      const scopesToWipe = new Map<string, { costCenterId: string; ano: number }>();
+
       for (const row of validRows) {
         const ccId = resolveRowCostCenterId(row);
         if (!ccId) {
@@ -410,52 +436,64 @@ export function useImportRealizado() {
           continue;
         }
 
-        const { data: existing, error: selectError } = await supabase
-          .from('actual_entries')
-          .select('id')
-          .eq('cost_center_id', ccId)
-          .eq('managerial_account_id', accountId)
-          .eq('supplier_id', supplierId)
-          .eq('ano', row.ano as number)
-          .eq('mes', row.mes as number)
-          .eq('valor', row.valor);
-
-        if (selectError) {
-          failed++;
-          failMessages.push(`${row.supplierName} (${row.mes}/${row.ano}): ${selectError.message}`);
-          continue;
-        }
-        if (existing && existing.length > 0) {
-          skippedDuplicates++;
-          continue;
-        }
-
-        const { error: insertError } = await supabase.from('actual_entries').insert({
+        scopesToWipe.set(`${ccId}::${row.ano}`, { costCenterId: ccId, ano: row.ano as number });
+        rowsToInsert.push({
           cost_center_id: ccId,
           managerial_account_id: accountId,
           supplier_id: supplierId,
-          ano: row.ano,
-          mes: row.mes,
+          ano: row.ano as number,
+          mes: row.mes as number,
           valor: row.valor,
           origem: 'BASE',
           tratamento: row.tratamento,
+          id_externo: row.idExterno,
         });
+      }
 
+      // 5) Apaga SOMENTE o que veio de importação anterior (origem='BASE')
+      // para os escopos (centro de custo + ano) presentes nesta base colada.
+      // Lançamentos manuais (origem='MANUAL', ex: ajustes/neutralizações)
+      // nunca são tocados aqui.
+      for (const { costCenterId, ano } of scopesToWipe.values()) {
+        await supabase
+          .from('actual_entries')
+          .delete()
+          .eq('cost_center_id', costCenterId)
+          .eq('ano', ano)
+          .eq('origem', 'BASE');
+      }
+
+      // 6) Insere tudo de novo, em lotes
+      const CHUNK_SIZE = 500;
+      for (let i = 0; i < rowsToInsert.length; i += CHUNK_SIZE) {
+        const chunk = rowsToInsert.slice(i, i + CHUNK_SIZE);
+        const { error: insertError } = await supabase.from('actual_entries').insert(chunk);
         if (insertError) {
-          failed++;
-          failMessages.push(`${row.supplierName} (${row.mes}/${row.ano}): ${insertError.message}`);
+          failed += chunk.length;
+          failMessages.push(`Lote de ${chunk.length} linha(s): ${insertError.message}`);
         } else {
-          inserted++;
+          inserted += chunk.length;
         }
       }
 
+      // Nomes de exibição dos escopos sobrescritos, pro resumo final
+      const ccNomeById = new Map<string, string>();
+      validRows.forEach((r) => {
+        const ccId = resolveRowCostCenterId(r);
+        if (ccId) ccNomeById.set(ccId, r.costCenterNome ?? r.costCenterRaw);
+      });
+      const escoposSubstituidos = Array.from(scopesToWipe.values()).map((s) => ({
+        costCenterNome: ccNomeById.get(s.costCenterId) ?? s.costCenterId,
+        ano: s.ano,
+      }));
+
       setImportResult({
         inserted,
-        skippedDuplicates,
         failed,
         newCostCenters: newCostCentersCount,
         newAccounts: newAccountsCount,
         newSuppliers: newSuppliersCount,
+        escoposSubstituidos,
         failMessages: failMessages.slice(0, 30),
       });
     } catch (err) {
@@ -471,6 +509,7 @@ export function useImportRealizado() {
     importing,
     importResult,
     importError,
+    pendingScopes,
     parsePastedText,
     confirmImport,
   };
